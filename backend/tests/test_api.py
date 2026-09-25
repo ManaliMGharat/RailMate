@@ -8,7 +8,7 @@ def test_root_endpoint():
     response = client.get("/")
     assert response.status_code == 200
     data = response.json()
-    assert data["name"] == "RailMate API"
+    assert data["name"] == "RailOne API"
     assert data["demo_mode"] is True
 
 def test_health():

@@ -2,7 +2,10 @@ import json
 from datetime import datetime, timedelta
 import random
 from app.core.database import SessionLocal, Base, engine
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, get_mpin_hash
+from app.seed.stations_data import STATIONS_MASTER
+from app.seed.import_csv_stations import load_and_validate_csv_stations
+from app.seed.mumbai_suburban_data import MUMBAI_SUBURBAN_STATIONS, get_mumbai_suburban_trains_spec
 from app.models import (
     User, Passenger, Station, Train, TrainSchedule, Coach, Seat,
     Booking, BookingPassenger, Payment, PNRRecord, UnreservedTicket,
@@ -11,52 +14,140 @@ from app.models import (
 )
 
 def seed():
+    try:
+        Base.metadata.drop_all(bind=engine)
+    except Exception as e:
+        print(f"Resetting tables: {e}")
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
-    # Clear existing data if any
-    try:
-        # Check if already seeded
-        if db.query(Station).count() > 0:
-            print("Database already has data. Dropping and re-seeding...")
-            Base.metadata.drop_all(bind=engine)
-            Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        print(f"Resetting tables: {e}")
-
-    print("Seeding Stations...")
-    station_data = [
-        {"code": "MMCT", "name": "Mumbai Central", "city": "Mumbai", "state": "Maharashtra", "zone": "WR", "platform_count": 8, "latitude": 18.9696, "longitude": 72.8193},
-        {"code": "CSMT", "name": "Mumbai Chhatrapati Shivaji Maharaj Terminus", "city": "Mumbai", "state": "Maharashtra", "zone": "CR", "platform_count": 18, "latitude": 18.9400, "longitude": 72.8353},
-        {"code": "TNA", "name": "Thane", "city": "Thane", "state": "Maharashtra", "zone": "CR", "platform_count": 10, "latitude": 19.1860, "longitude": 72.9759},
-        {"code": "PUNE", "name": "Pune Junction", "city": "Pune", "state": "Maharashtra", "zone": "CR", "platform_count": 6, "latitude": 18.5289, "longitude": 73.8744},
-        {"code": "NK", "name": "Nashik Road", "city": "Nashik", "state": "Maharashtra", "zone": "CR", "platform_count": 4, "latitude": 19.9547, "longitude": 73.8373},
-        {"code": "NGP", "name": "Nagpur Junction", "city": "Nagpur", "state": "Maharashtra", "zone": "CR", "platform_count": 8, "latitude": 21.1528, "longitude": 79.0882},
-        {"code": "NDLS", "name": "New Delhi", "city": "Delhi", "state": "Delhi", "zone": "NR", "platform_count": 16, "latitude": 28.6415, "longitude": 77.2207},
-        {"code": "DLI", "name": "Old Delhi Junction", "city": "Delhi", "state": "Delhi", "zone": "NR", "platform_count": 16, "latitude": 28.6607, "longitude": 77.2285},
-        {"code": "SBC", "name": "KSR Bengaluru City Junction", "city": "Bengaluru", "state": "Karnataka", "zone": "SWR", "platform_count": 10, "latitude": 12.9784, "longitude": 77.5694},
-        {"code": "MAS", "name": "MGR Chennai Central", "city": "Chennai", "state": "Tamil Nadu", "zone": "SR", "platform_count": 17, "latitude": 13.0827, "longitude": 80.2755},
-        {"code": "SC", "name": "Secunderabad Junction", "city": "Hyderabad", "state": "Telangana", "zone": "SCR", "platform_count": 10, "latitude": 17.4344, "longitude": 78.5015},
-        {"code": "ADI", "name": "Ahmedabad Junction", "city": "Ahmedabad", "state": "Gujarat", "zone": "WR", "platform_count": 12, "latitude": 23.0238, "longitude": 72.6006},
-        {"code": "ST", "name": "Surat", "city": "Surat", "state": "Gujarat", "zone": "WR", "platform_count": 6, "latitude": 21.2049, "longitude": 72.8406},
-        {"code": "JP", "name": "Jaipur Junction", "city": "Jaipur", "state": "Rajasthan", "zone": "NWR", "platform_count": 8, "latitude": 26.9196, "longitude": 75.7878},
-        {"code": "HWH", "name": "Howrah Junction", "city": "Kolkata", "state": "West Bengal", "zone": "ER", "platform_count": 23, "latitude": 22.5839, "longitude": 88.3426},
-    ]
+    print("Seeding Master Stations from CSV and Master Data...")
+    csv_stations, stats = load_and_validate_csv_stations()
+    print(f"Loaded {stats['imported']} valid stations from CSV (Duplicates: {stats['duplicates']}, Rejected: {stats['rejected']})")
 
     stations = {}
-    for s in station_data:
-        st = Station(**s)
+    seen_codes = set()
+
+    # 1. Seed from CSV (official 50 records)
+    for s in csv_stations:
+        code = s["code"].upper()
+        if code in seen_codes:
+            continue
+        seen_codes.add(code)
+        # Check if master has coordinates or richer aliases
+        master_match = next((m for m in STATIONS_MASTER if m["code"].upper() == code), None)
+        st = Station(
+            code=code,
+            name=s["name"],
+            city=master_match["city"] if master_match else s["city"],
+            state=s["state"],
+            zone=s["zone"],
+            division=master_match.get("division", s.get("division", "")) if master_match else s.get("division", ""),
+            search_aliases=(master_match.get("search_aliases", "") + ", " + s.get("search_aliases", "")).strip(", ") if master_match else s.get("search_aliases", ""),
+            is_active=True,
+            is_junction=master_match.get("is_junction", s.get("is_junction", False)) if master_match else s.get("is_junction", False),
+            is_major=True,
+            platform_count=master_match.get("platform_count", s.get("platform_count", 6)) if master_match else s.get("platform_count", 6),
+            latitude=master_match.get("latitude", 20.0) if master_match else 20.0,
+            longitude=master_match.get("longitude", 78.0) if master_match else 78.0,
+        )
         db.add(st)
         db.flush()
-        stations[s["code"]] = st
+        stations[code] = st
+
+    # 2. Seed remaining stations from STATIONS_MASTER (intermediate stops)
+    for s in STATIONS_MASTER:
+        code = s["code"].upper()
+        if code in seen_codes:
+            continue
+        seen_codes.add(code)
+        st = Station(
+            code=code,
+            name=s["name"],
+            city=s["city"],
+            state=s["state"],
+            zone=s.get("zone", "NR"),
+            division=s.get("division", ""),
+            search_aliases=s.get("search_aliases", ""),
+            is_active=s.get("is_active", True),
+            is_junction=s.get("is_junction", False),
+            is_major=s.get("is_major", False),
+            platform_count=s.get("platform_count", 5),
+            latitude=s.get("latitude", 19.0),
+            longitude=s.get("longitude", 72.8),
+        )
+        db.add(st)
+        db.flush()
+        stations[code] = st
+
+    # 3. Seed / Enrich Mumbai Suburban Railway Network
+    print("Seeding Complete Mumbai Suburban Railway Network...")
+    suburban_reused = 0
+    suburban_added = 0
+    duplicates_prevented = 0
+
+    for sub in MUMBAI_SUBURBAN_STATIONS:
+        code = sub["code"].upper()
+        if code in seen_codes:
+            # Re-use canonical record and enrich it with suburban corridor metadata!
+            duplicates_prevented += 1
+            existing_st = stations[code]
+            existing_st.station_type = "SUBURBAN"
+            if sub.get("district"):
+                existing_st.district = sub["district"]
+            # Merge corridors
+            if existing_st.corridors:
+                existing_corridors = set([c.strip() for c in existing_st.corridors.split(",") if c.strip()])
+                new_corridors = set([c.strip() for c in sub.get("corridors", "").split(",") if c.strip()])
+                existing_st.corridors = ", ".join(sorted(existing_corridors | new_corridors))
+            else:
+                existing_st.corridors = sub.get("corridors", "")
+            # Merge search aliases
+            existing_aliases = set([a.strip().lower() for a in (existing_st.search_aliases or "").split(",") if a.strip()])
+            new_aliases = set([a.strip().lower() for a in sub.get("search_aliases", "").split(",") if a.strip()])
+            existing_st.search_aliases = ", ".join(sorted(existing_aliases | new_aliases))
+            suburban_reused += 1
+            continue
+
+        seen_codes.add(code)
+        st = Station(
+            code=code,
+            name=sub["name"],
+            city=sub["city"],
+            state=sub.get("state", "Maharashtra"),
+            zone=sub.get("zone", "CR"),
+            division=sub.get("division", "Mumbai CR"),
+            district=sub.get("district", "Mumbai Suburban"),
+            station_type="SUBURBAN",
+            corridors=sub.get("corridors", ""),
+            search_aliases=sub.get("search_aliases", ""),
+            is_active=True,
+            is_junction=sub.get("is_junction", False),
+            is_major=sub.get("is_major", False),
+            platform_count=sub.get("platform_count", 4),
+            latitude=sub.get("latitude", 19.0),
+            longitude=sub.get("longitude", 72.8),
+        )
+        db.add(st)
+        db.flush()
+        stations[code] = st
+        suburban_added += 1
+
+    print(f"Mumbai Suburban integration: {suburban_added} new stations added, {suburban_reused} existing stations reused/enriched, {duplicates_prevented} duplicate records prevented.")
+    print(f"Total seeded stations: {len(stations)} ({stats['imported']} from CSV + {len(stations) - stats['imported']} routes/suburban/intermediate stops).")
 
     print("Seeding Users...")
     # Demo User matching screenshot name: Manali Manish Gharat
     demo_user = User(
         email="demo@railmate.com",
-        mobile="9876543210",
+        mobile="+919876543210",
         full_name="Manali Manish Gharat",
         hashed_password=get_password_hash("password123"),
+        hashed_mpin=get_mpin_hash("123456"),
+        mpin_enabled=True,
+        mpin_failed_attempts=0,
+        biometric_enabled=False,
+        is_phone_verified=True,
         role="user",
         dob="1995-08-14",
         gender="Female",
@@ -65,14 +156,34 @@ def seed():
         is_active=True
     )
     db.add(demo_user)
+
+    demo_railone = User(
+        email="demo@railone.com",
+        mobile="+919876543211",
+        full_name="Manali Manish Gharat",
+        hashed_password=get_password_hash("password123"),
+        hashed_mpin=get_mpin_hash("123456"),
+        mpin_enabled=True,
+        mpin_failed_attempts=0,
+        biometric_enabled=False,
+        is_phone_verified=True,
+        role="user",
+        dob="1995-08-14",
+        gender="Female",
+        address="Bandra West, Mumbai, Maharashtra 400050",
+        profile_completion=85,
+        is_active=True
+    )
+    db.add(demo_railone)
     db.flush()
 
     admin_user = User(
         email="admin@railmate.com",
-        mobile="9998887770",
-        full_name="RailMate Admin",
+        mobile="+919998887770",
+        full_name="RailOne Admin",
         hashed_password=get_password_hash("adminpassword123"),
         role="admin",
+        is_phone_verified=True,
         dob="1988-04-12",
         gender="Male",
         address="Railway Bhavan, New Delhi 110001",
@@ -106,88 +217,112 @@ def seed():
     trains_spec = [
         # Mumbai to Delhi Corridor
         ("12951", "Mumbai Rajdhani Express", "Rajdhani", "MMCT", "NDLS", "17:00", "08:32", 15.5, "1,2,3,4,5,6,7", "1A,2A,3A,3E",
-         [("MMCT", 0, "17:00", "17:00", 0, 1, 0), ("ST", 1, "19:43", "19:48", 5, 1, 263), ("ADI", 2, "22:15", "22:25", 10, 1, 492), ("NDLS", 3, "08:32", "08:32", 0, 2, 1384)]),
+         [("MMCT", 0, "17:00", "17:00", 0, 1, 0), ("BVI", 1, "17:22", "17:24", 2, 1, 30), ("ST", 2, "19:43", "19:48", 5, 1, 263), ("BRC", 3, "21:06", "21:16", 10, 1, 392), ("RTM", 4, "00:02", "00:05", 3, 2, 653), ("KOTA", 5, "03:15", "03:20", 5, 2, 920), ("NDLS", 6, "08:32", "08:32", 0, 2, 1384)]),
         ("12952", "New Delhi - Mumbai Rajdhani", "Rajdhani", "NDLS", "MMCT", "16:55", "08:35", 15.6, "1,2,3,4,5,6,7", "1A,2A,3A,3E",
-         [("NDLS", 0, "16:55", "16:55", 0, 1, 0), ("ADI", 1, "03:10", "03:20", 10, 2, 892), ("ST", 2, "05:40", "05:45", 5, 2, 1121), ("MMCT", 3, "08:35", "08:35", 0, 2, 1384)]),
+         [("NDLS", 0, "16:55", "16:55", 0, 1, 0), ("KOTA", 1, "21:30", "21:35", 5, 1, 464), ("RTM", 2, "00:35", "00:38", 3, 2, 731), ("BRC", 3, "03:45", "03:55", 10, 2, 992), ("ST", 4, "05:18", "05:23", 5, 2, 1121), ("BVI", 5, "07:40", "07:42", 2, 2, 1354), ("MMCT", 6, "08:35", "08:35", 0, 2, 1384)]),
         ("12953", "August Kranti Tejas Rajdhani", "Tejas Express", "MMCT", "NDLS", "17:10", "09:43", 16.5, "1,2,3,4,5,6,7", "1A,2A,3A",
-         [("MMCT", 0, "17:10", "17:10", 0, 1, 0), ("TNA", 1, "17:45", "17:47", 2, 1, 34), ("ST", 2, "20:50", "20:55", 5, 1, 263), ("JP", 3, "05:30", "05:40", 10, 2, 1100), ("NDLS", 4, "09:43", "09:43", 0, 2, 1384)]),
+         [("MMCT", 0, "17:10", "17:10", 0, 1, 0), ("BVI", 1, "17:33", "17:35", 2, 1, 30), ("VAPI", 2, "19:04", "19:06", 2, 1, 168), ("ST", 3, "20:50", "20:55", 5, 1, 263), ("BRC", 4, "22:19", "22:29", 10, 1, 392), ("RTM", 5, "01:50", "01:53", 3, 2, 653), ("KOTA", 6, "05:10", "05:15", 5, 2, 920), ("MTJ", 7, "07:58", "08:00", 2, 2, 1243), ("NDLS", 8, "09:43", "09:43", 0, 2, 1384)]),
         ("22221", "Mumbai CSMT - NZM Rajdhani", "Rajdhani", "CSMT", "NDLS", "16:10", "09:55", 17.7, "1,3,4,6", "1A,2A,3A",
-         [("CSMT", 0, "16:10", "16:10", 0, 1, 0), ("NK", 1, "19:18", "19:20", 2, 1, 187), ("NGP", 2, "01:25", "01:30", 5, 2, 837), ("NDLS", 3, "09:55", "09:55", 0, 2, 1540)]),
+         [("CSMT", 0, "16:10", "16:10", 0, 1, 0), ("KYN", 1, "16:43", "16:45", 2, 1, 54), ("NK", 2, "19:18", "19:20", 2, 1, 187), ("JL", 3, "22:28", "22:30", 2, 1, 417), ("BSL", 4, "23:00", "23:05", 5, 1, 441), ("BPL", 5, "05:00", "05:05", 5, 2, 836), ("VGLJ", 6, "08:30", "08:35", 5, 2, 1128), ("GWL", 7, "09:40", "09:42", 2, 2, 1226), ("AGC", 8, "11:15", "11:17", 2, 2, 1344), ("NDLS", 9, "09:55", "09:55", 0, 2, 1540)]),
         
         # Mumbai to Ahmedabad
         ("20901", "Mumbai - Gandhinagar Vande Bharat", "Vande Bharat", "MMCT", "ADI", "06:00", "11:25", 5.4, "1,2,3,4,5,6", "CC,EC",
-         [("MMCT", 0, "06:00", "06:00", 0, 1, 0), ("ST", 1, "08:37", "08:40", 3, 1, 263), ("ADI", 2, "11:25", "11:30", 5, 1, 492)]),
+         [("MMCT", 0, "06:00", "06:00", 0, 1, 0), ("BVI", 1, "06:23", "06:25", 2, 1, 30), ("VAPI", 2, "07:56", "07:58", 2, 1, 168), ("ST", 3, "08:37", "08:40", 3, 1, 263), ("BH", 4, "09:22", "09:24", 2, 1, 322), ("BRC", 5, "10:00", "10:05", 5, 1, 392), ("ANND", 6, "10:35", "10:37", 2, 1, 427), ("ADI", 7, "11:25", "11:30", 5, 1, 492)]),
         ("20902", "Gandhinagar - Mumbai Vande Bharat", "Vande Bharat", "ADI", "MMCT", "15:00", "20:25", 5.4, "1,2,3,4,5,6", "CC,EC",
-         [("ADI", 0, "15:00", "15:00", 0, 1, 0), ("ST", 1, "17:43", "17:46", 3, 1, 229), ("MMCT", 2, "20:25", "20:25", 0, 1, 492)]),
+         [("ADI", 0, "15:00", "15:00", 0, 1, 0), ("ANND", 1, "15:40", "15:42", 2, 1, 65), ("BRC", 2, "16:15", "16:20", 5, 1, 100), ("BH", 3, "16:55", "16:57", 2, 1, 170), ("ST", 4, "17:43", "17:46", 3, 1, 229), ("VAPI", 5, "18:38", "18:40", 2, 1, 324), ("BVI", 6, "19:32", "19:34", 2, 1, 462), ("MMCT", 7, "20:25", "20:25", 0, 1, 492)]),
         ("12009", "Mumbai - Ahmedabad Shatabdi", "Shatabdi", "MMCT", "ADI", "06:20", "12:45", 6.4, "1,2,3,4,5,6", "CC,EC",
-         [("MMCT", 0, "06:20", "06:20", 0, 1, 0), ("ST", 1, "09:15", "09:18", 3, 1, 263), ("ADI", 2, "12:45", "12:45", 0, 1, 492)]),
+         [("MMCT", 0, "06:20", "06:20", 0, 1, 0), ("BVI", 1, "06:48", "06:50", 2, 1, 30), ("VAPI", 2, "08:14", "08:16", 2, 1, 168), ("ST", 3, "09:15", "09:18", 3, 1, 263), ("BH", 4, "10:00", "10:02", 2, 1, 322), ("BRC", 5, "10:45", "10:50", 5, 1, 392), ("ANND", 6, "11:20", "11:22", 2, 1, 427), ("ADI", 7, "12:45", "12:45", 0, 1, 492)]),
         ("12267", "Mumbai - Ahmedabad Duronto", "Duronto", "MMCT", "ADI", "23:25", "05:55", 6.5, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
          [("MMCT", 0, "23:25", "23:25", 0, 1, 0), ("ADI", 1, "05:55", "05:55", 0, 2, 492)]),
 
         # Mumbai to Pune
         ("12123", "Deccan Queen Superfast", "Superfast", "CSMT", "PUNE", "17:10", "20:25", 3.2, "1,2,3,4,5,6,7", "CC,2S",
-         [("CSMT", 0, "17:10", "17:10", 0, 1, 0), ("TNA", 1, "17:40", "17:42", 2, 1, 34), ("PUNE", 2, "20:25", "20:25", 0, 1, 192)]),
+         [("CSMT", 0, "17:10", "17:10", 0, 1, 0), ("DR", 1, "17:20", "17:22", 2, 1, 9), ("TNA", 2, "17:40", "17:42", 2, 1, 34), ("KYN", 3, "18:02", "18:05", 3, 1, 54), ("LNL", 4, "19:18", "19:20", 2, 1, 128), ("SVJR", 5, "20:09", "20:10", 1, 1, 190), ("PUNE", 6, "20:25", "20:25", 0, 1, 192)]),
         ("12124", "Deccan Queen Return", "Superfast", "PUNE", "CSMT", "07:15", "10:25", 3.1, "1,2,3,4,5,6,7", "CC,2S",
-         [("PUNE", 0, "07:15", "07:15", 0, 1, 0), ("TNA", 1, "09:40", "09:42", 2, 1, 158), ("CSMT", 2, "10:25", "10:25", 0, 1, 192)]),
+         [("PUNE", 0, "07:15", "07:15", 0, 1, 0), ("SVJR", 1, "07:22", "07:23", 1, 1, 2), ("LNL", 2, "08:14", "08:15", 1, 1, 64), ("KYN", 3, "09:18", "09:20", 2, 1, 138), ("TNA", 4, "09:40", "09:42", 2, 1, 158), ("DR", 5, "10:03", "10:05", 2, 1, 183), ("CSMT", 6, "10:25", "10:25", 0, 1, 192)]),
+        ("12127", "Mumbai Central - Pune Intercity SF", "Superfast", "MMCT", "PUNE", "06:40", "09:57", 3.3, "1,2,3,4,5,6,7", "CC,2S",
+         [("MMCT", 0, "06:40", "06:40", 0, 1, 0), ("DR", 1, "06:55", "06:57", 2, 1, 6), ("TNA", 2, "07:18", "07:20", 2, 1, 31), ("KYN", 3, "07:38", "07:40", 2, 1, 51), ("LNL", 4, "08:58", "09:00", 2, 1, 125), ("SVJR", 5, "09:44", "09:45", 1, 1, 187), ("PUNE", 6, "09:57", "09:57", 0, 1, 189)]),
+        ("12128", "Pune - Mumbai Central Intercity SF", "Superfast", "PUNE", "MMCT", "17:55", "21:05", 3.2, "1,2,3,4,5,6,7", "CC,2S",
+         [("PUNE", 0, "17:55", "17:55", 0, 1, 0), ("SVJR", 1, "18:02", "18:03", 1, 1, 2), ("LNL", 2, "18:54", "18:55", 1, 1, 64), ("KYN", 3, "19:58", "20:00", 2, 1, 138), ("TNA", 4, "20:20", "20:22", 2, 1, 158), ("DR", 5, "20:43", "20:45", 2, 1, 183), ("MMCT", 6, "21:05", "21:05", 0, 1, 189)]),
+        ("22225", "Mumbai Central - Solapur Vande Bharat", "Vande Bharat", "MMCT", "PUNE", "16:05", "19:10", 3.1, "1,2,3,4,5,7", "CC,EC",
+         [("MMCT", 0, "16:05", "16:05", 0, 1, 0), ("DR", 1, "16:17", "16:20", 3, 1, 6), ("KYN", 2, "16:53", "16:55", 2, 1, 51), ("PUNE", 3, "19:10", "19:15", 5, 1, 189)]),
+        ("22226", "Solapur - Mumbai Central Vande Bharat", "Vande Bharat", "PUNE", "MMCT", "09:15", "12:35", 3.3, "1,2,3,4,5,7", "CC,EC",
+         [("PUNE", 0, "09:15", "09:20", 5, 1, 0), ("KYN", 1, "11:33", "11:35", 2, 1, 138), ("DR", 2, "12:08", "12:10", 2, 1, 183), ("MMCT", 3, "12:35", "12:35", 0, 1, 189)]),
         ("22105", "Indrayani Express", "Express", "CSMT", "PUNE", "05:40", "09:05", 3.4, "1,2,3,4,5,6,7", "CC,2S",
-         [("CSMT", 0, "05:40", "05:40", 0, 1, 0), ("TNA", 1, "06:14", "06:16", 2, 1, 34), ("PUNE", 2, "09:05", "09:05", 0, 1, 192)]),
+         [("CSMT", 0, "05:40", "05:40", 0, 1, 0), ("DR", 1, "05:51", "05:53", 2, 1, 9), ("TNA", 2, "06:14", "06:16", 2, 1, 34), ("KYN", 3, "06:33", "06:35", 2, 1, 54), ("KJT", 4, "07:13", "07:15", 2, 1, 100), ("LNL", 5, "07:58", "08:00", 2, 1, 128), ("SVJR", 6, "08:49", "08:50", 1, 1, 190), ("PUNE", 7, "09:05", "09:05", 0, 1, 192)]),
 
         # Mumbai to Howrah / Nagpur
         ("12859", "Gitanjali Express", "Superfast", "CSMT", "HWH", "06:00", "12:30", 30.5, "1,2,3,4,5,6,7", "2A,3A,SL,2S",
-         [("CSMT", 0, "06:00", "06:00", 0, 1, 0), ("NK", 1, "09:30", "09:35", 5, 1, 187), ("NGP", 2, "18:55", "19:00", 5, 1, 837), ("HWH", 3, "12:30", "12:30", 0, 2, 1968)]),
+         [("CSMT", 0, "06:00", "06:00", 0, 1, 0), ("DR", 1, "06:12", "06:15", 3, 1, 9), ("KYN", 2, "06:52", "06:55", 3, 1, 54), ("IGP", 3, "08:43", "08:45", 2, 1, 137), ("NK", 4, "09:30", "09:35", 5, 1, 187), ("JL", 5, "11:58", "12:00", 2, 1, 417), ("BSL", 6, "12:40", "12:45", 5, 1, 441), ("AK", 7, "14:40", "14:45", 5, 1, 586), ("BD", 8, "16:00", "16:05", 5, 1, 665), ("WR", 9, "17:18", "17:20", 2, 1, 760), ("NGP", 10, "18:55", "19:00", 5, 1, 837), ("R", 11, "23:25", "23:30", 5, 1, 1140), ("BSP", 12, "01:20", "01:35", 15, 2, 1251), ("KGP", 13, "09:40", "09:45", 5, 2, 1853), ("HWH", 14, "12:30", "12:30", 0, 2, 1968)]),
         ("12289", "Mumbai CSMT - Nagpur Duronto", "Duronto", "CSMT", "NGP", "20:15", "07:20", 11.0, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("CSMT", 0, "20:15", "20:15", 0, 1, 0), ("NGP", 1, "07:20", "07:20", 0, 2, 837)]),
+         [("CSMT", 0, "20:15", "20:15", 0, 1, 0), ("IGP", 1, "22:50", "22:55", 5, 1, 137), ("BSL", 2, "02:40", "02:45", 5, 2, 441), ("NGP", 3, "07:20", "07:20", 0, 2, 837)]),
         ("12137", "Punjab Mail", "Express", "CSMT", "NDLS", "19:35", "19:10", 23.5, "1,2,3,4,5,6,7", "1A,2A,3A,SL,2S",
-         [("CSMT", 0, "19:35", "19:35", 0, 1, 0), ("NK", 1, "23:10", "23:15", 5, 1, 187), ("NDLS", 2, "19:10", "19:10", 0, 2, 1540)]),
+         [("CSMT", 0, "19:35", "19:35", 0, 1, 0), ("DR", 1, "19:47", "19:50", 3, 1, 9), ("KYN", 2, "20:32", "20:35", 3, 1, 54), ("NK", 3, "23:10", "23:15", 5, 1, 187), ("JL", 4, "01:58", "02:00", 2, 2, 417), ("BSL", 5, "02:35", "02:40", 5, 2, 441), ("ET", 6, "07:50", "08:00", 10, 2, 748), ("BPL", 7, "09:30", "09:35", 5, 2, 840), ("VGLJ", 8, "13:30", "13:38", 8, 2, 1132), ("GWL", 9, "14:40", "14:42", 2, 2, 1230), ("AGC", 10, "16:15", "16:20", 5, 2, 1348), ("MTJ", 11, "17:00", "17:05", 5, 2, 1402), ("FDB", 12, "18:25", "18:27", 2, 2, 1510), ("NDLS", 13, "19:10", "19:10", 0, 2, 1540)]),
 
         # Mumbai to Bengaluru & Chennai
         ("11301", "Udyan Express", "Express", "CSMT", "SBC", "08:10", "07:45", 23.5, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("CSMT", 0, "08:10", "08:10", 0, 1, 0), ("PUNE", 1, "11:50", "11:55", 5, 1, 192), ("SBC", 2, "07:45", "07:45", 0, 2, 1136)]),
+         [("CSMT", 0, "08:10", "08:10", 0, 1, 0), ("DR", 1, "08:22", "08:25", 3, 1, 9), ("TNA", 2, "08:48", "08:50", 2, 1, 34), ("KYN", 3, "09:12", "09:15", 3, 1, 54), ("LNL", 4, "10:38", "10:40", 2, 1, 128), ("PUNE", 5, "11:50", "11:55", 5, 1, 192), ("DD", 6, "13:13", "13:15", 2, 1, 268), ("KWV", 7, "14:33", "14:35", 2, 1, 377), ("SUR", 8, "15:40", "15:45", 5, 1, 456), ("KLBG", 9, "17:32", "17:35", 3, 1, 569), ("WADI", 10, "18:30", "18:35", 5, 1, 606), ("RC", 11, "20:13", "20:15", 2, 1, 714), ("GTL", 12, "22:20", "22:25", 5, 1, 835), ("SBC", 13, "07:45", "07:45", 0, 2, 1136)]),
         ("12163", "Mumbai LTT - Chennai Superfast", "Superfast", "CSMT", "MAS", "18:45", "16:20", 21.5, "1,2,3,4,5,6,7", "2A,3A,SL",
-         [("CSMT", 0, "18:45", "18:45", 0, 1, 0), ("PUNE", 1, "22:10", "22:15", 5, 1, 192), ("MAS", 2, "16:20", "16:20", 0, 2, 1281)]),
+         [("CSMT", 0, "18:45", "18:45", 0, 1, 0), ("DR", 1, "18:57", "19:00", 3, 1, 9), ("TNA", 2, "19:23", "19:25", 2, 1, 34), ("KYN", 3, "19:47", "19:50", 3, 1, 54), ("PUNE", 4, "22:10", "22:15", 5, 1, 192), ("SUR", 5, "01:50", "01:55", 5, 2, 456), ("WADI", 6, "04:15", "04:20", 5, 2, 606), ("GTL", 7, "07:40", "07:45", 5, 2, 835), ("RU", 8, "12:15", "12:20", 5, 2, 1146), ("MAS", 9, "16:20", "16:20", 0, 2, 1281)]),
 
         # Delhi to Bengaluru, Chennai, Kolkata
         ("12627", "Karnataka Express", "Superfast", "NDLS", "SBC", "20:20", "12:00", 39.6, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("NDLS", 0, "20:20", "20:20", 0, 1, 0), ("NGP", 1, "12:20", "12:25", 5, 2, 1091), ("SC", 2, "20:40", "20:45", 5, 2, 1672), ("SBC", 3, "12:00", "12:00", 0, 3, 2408)]),
+         [("NDLS", 0, "20:20", "20:20", 0, 1, 0), ("AGC", 1, "22:50", "22:55", 5, 1, 195), ("GWL", 2, "00:18", "00:20", 2, 2, 313), ("VGLJ", 3, "01:40", "01:48", 8, 2, 411), ("BPL", 4, "05:30", "05:35", 5, 2, 703), ("ET", 5, "07:10", "07:20", 10, 2, 795), ("NGP", 6, "12:20", "12:25", 5, 2, 1091), ("BPQ", 7, "15:40", "15:45", 5, 2, 1300), ("KZJ", 8, "18:28", "18:30", 2, 2, 1535), ("SC", 9, "20:40", "20:45", 5, 2, 1672), ("GTL", 10, "03:40", "03:45", 5, 3, 2095), ("SBC", 11, "12:00", "12:00", 0, 3, 2408)]),
         ("12626", "Kerala Express", "Superfast", "NDLS", "MAS", "20:10", "04:30", 32.3, "1,2,3,4,5,6,7", "2A,3A,SL",
-         [("NDLS", 0, "20:10", "20:10", 0, 1, 0), ("NGP", 1, "11:45", "11:50", 5, 2, 1091), ("MAS", 2, "04:30", "04:30", 0, 3, 2182)]),
+         [("NDLS", 0, "20:10", "20:10", 0, 1, 0), ("AGC", 1, "22:20", "22:25", 5, 1, 195), ("GWL", 2, "23:43", "23:45", 2, 1, 313), ("VGLJ", 3, "01:05", "01:13", 8, 2, 411), ("BPL", 4, "05:00", "05:05", 5, 2, 703), ("ET", 5, "06:40", "06:45", 5, 2, 795), ("NGP", 6, "11:45", "11:50", 5, 2, 1091), ("BPQ", 7, "15:00", "15:05", 5, 2, 1300), ("BZA", 8, "21:30", "21:40", 10, 2, 1753), ("MAS", 9, "04:30", "04:30", 0, 3, 2182)]),
         ("12301", "Howrah Rajdhani Express", "Rajdhani", "HWH", "NDLS", "16:50", "10:05", 17.2, "1,2,3,4,5,7", "1A,2A,3A",
-         [("HWH", 0, "16:50", "16:50", 0, 1, 0), ("NDLS", 1, "10:05", "10:05", 0, 2, 1451)]),
+         [("HWH", 0, "16:50", "16:50", 0, 1, 0), ("BWN", 1, "17:50", "17:52", 2, 1, 95), ("DGR", 2, "18:38", "18:40", 2, 1, 158), ("ASN", 3, "19:15", "19:20", 5, 1, 200), ("DDU", 4, "00:45", "00:55", 10, 2, 650), ("PRYJ", 5, "02:30", "02:35", 5, 2, 803), ("CNB", 6, "04:40", "04:45", 5, 2, 997), ("NDLS", 7, "10:05", "10:05", 0, 2, 1451)]),
         ("12302", "New Delhi - Howrah Rajdhani", "Rajdhani", "NDLS", "HWH", "16:55", "09:55", 17.0, "1,2,3,5,6,7", "1A,2A,3A",
-         [("NDLS", 0, "16:55", "16:55", 0, 1, 0), ("HWH", 1, "09:55", "09:55", 0, 2, 1451)]),
+         [("NDLS", 0, "16:55", "16:55", 0, 1, 0), ("CNB", 1, "21:32", "21:37", 5, 1, 435), ("PRYJ", 2, "23:43", "23:45", 2, 1, 629), ("DDU", 3, "01:42", "01:52", 10, 2, 782), ("ASN", 4, "06:50", "06:54", 4, 2, 1232), ("DGR", 5, "07:28", "07:30", 2, 2, 1274), ("BWN", 6, "08:24", "08:26", 2, 2, 1337), ("HWH", 7, "09:55", "09:55", 0, 2, 1451)]),
         ("22436", "Vande Bharat Express (NDLS-BSB)", "Vande Bharat", "NDLS", "JP", "06:00", "10:30", 4.5, "1,2,3,5,6,7", "CC,EC",
          [("NDLS", 0, "06:00", "06:00", 0, 1, 0), ("JP", 1, "10:30", "10:30", 0, 1, 308)]),
 
         # Chennai - Bengaluru - Hyderabad
         ("12007", "Chennai - Mysuru Shatabdi", "Shatabdi", "MAS", "SBC", "06:00", "10:55", 4.9, "1,3,4,5,6,7", "CC,EC",
-         [("MAS", 0, "06:00", "06:00", 0, 1, 0), ("SBC", 1, "10:55", "11:00", 5, 1, 359)]),
+         [("MAS", 0, "06:00", "06:00", 0, 1, 0), ("KPD", 1, "07:38", "07:40", 2, 1, 130), ("SBC", 2, "10:55", "11:00", 5, 1, 359)]),
         ("20607", "Chennai - Bengaluru Vande Bharat", "Vande Bharat", "MAS", "SBC", "05:50", "10:20", 4.5, "1,2,3,4,5,6", "CC,EC",
-         [("MAS", 0, "05:50", "05:50", 0, 1, 0), ("SBC", 1, "10:20", "10:25", 5, 1, 359)]),
+         [("MAS", 0, "05:50", "05:50", 0, 1, 0), ("KPD", 1, "07:13", "07:15", 2, 1, 130), ("SBC", 2, "10:20", "10:25", 5, 1, 359)]),
         ("12723", "Telangana Express", "Superfast", "SC", "NDLS", "06:00", "07:40", 25.6, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("SC", 0, "06:00", "06:00", 0, 1, 0), ("NGP", 1, "15:20", "15:25", 5, 1, 581), ("NDLS", 2, "07:40", "07:40", 0, 2, 1672)]),
+         [("SC", 0, "06:00", "06:00", 0, 1, 0), ("KZJ", 1, "07:48", "07:50", 2, 1, 132), ("BPQ", 2, "11:00", "11:05", 5, 1, 367), ("NGP", 3, "15:20", "15:25", 5, 1, 581), ("BPL", 4, "21:40", "21:45", 5, 1, 970), ("VGLJ", 5, "01:25", "01:30", 5, 2, 1262), ("GWL", 6, "02:40", "02:42", 2, 2, 1360), ("AGC", 7, "04:15", "04:17", 2, 2, 1478), ("NDLS", 8, "07:40", "07:40", 0, 2, 1672)]),
         ("12724", "Telangana Express Return", "Superfast", "NDLS", "SC", "16:00", "17:10", 25.1, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("NDLS", 0, "16:00", "16:00", 0, 1, 0), ("NGP", 1, "07:10", "07:15", 5, 2, 1091), ("SC", 2, "17:10", "17:10", 0, 2, 1672)]),
+         [("NDLS", 0, "16:00", "16:00", 0, 1, 0), ("AGC", 1, "18:05", "18:07", 2, 1, 195), ("GWL", 2, "19:25", "19:27", 2, 1, 313), ("VGLJ", 3, "21:00", "21:05", 5, 1, 411), ("BPL", 4, "01:10", "01:15", 5, 2, 703), ("NGP", 5, "07:10", "07:15", 5, 2, 1091), ("BPQ", 6, "10:45", "10:50", 5, 2, 1305), ("KZJ", 7, "14:08", "14:10", 2, 2, 1540), ("SC", 8, "17:10", "17:10", 0, 2, 1672)]),
 
         # Mumbai to Jaipur & Rajasthan
         ("12955", "Mumbai Central - Jaipur Superfast", "Superfast", "MMCT", "JP", "19:05", "12:45", 17.6, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("MMCT", 0, "19:05", "19:05", 0, 1, 0), ("ST", 1, "22:30", "22:35", 5, 1, 263), ("JP", 2, "12:45", "12:45", 0, 2, 1159)]),
+         [("MMCT", 0, "19:05", "19:05", 0, 1, 0), ("BVI", 1, "19:32", "19:34", 2, 1, 30), ("ST", 2, "22:30", "22:35", 5, 1, 263), ("BRC", 3, "00:08", "00:18", 10, 2, 392), ("RTM", 4, "04:00", "04:05", 5, 2, 653), ("KOTA", 5, "07:45", "07:55", 10, 2, 920), ("SWM", 6, "09:25", "09:40", 15, 2, 1028), ("JP", 7, "12:45", "12:45", 0, 2, 1159)]),
         ("12956", "Jaipur - Mumbai Central Superfast", "Superfast", "JP", "MMCT", "14:00", "07:40", 17.6, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("JP", 0, "14:00", "14:00", 0, 1, 0), ("ST", 1, "04:10", "04:15", 5, 2, 896), ("MMCT", 2, "07:40", "07:40", 0, 2, 1159)]),
+         [("JP", 0, "14:00", "14:00", 0, 1, 0), ("SWM", 1, "15:40", "15:55", 15, 1, 131), ("KOTA", 2, "17:10", "17:20", 10, 1, 239), ("RTM", 3, "21:05", "21:15", 10, 1, 506), ("BRC", 4, "01:06", "01:16", 10, 2, 767), ("ST", 5, "03:00", "03:05", 5, 2, 896), ("BVI", 6, "06:33", "06:35", 2, 2, 1129), ("MMCT", 7, "07:40", "07:40", 0, 2, 1159)]),
         ("12979", "Bandra Terminus - Jaipur SF", "Superfast", "MMCT", "JP", "17:05", "10:30", 17.4, "2,4,6", "2A,3A,SL,2S",
-         [("MMCT", 0, "17:05", "17:05", 0, 1, 0), ("ST", 1, "20:35", "20:40", 5, 1, 263), ("JP", 2, "10:30", "10:30", 0, 2, 1159)]),
+         [("MMCT", 0, "17:05", "17:05", 0, 1, 0), ("BVI", 1, "17:37", "17:40", 3, 1, 30), ("VAPI", 2, "19:14", "19:16", 2, 1, 168), ("ST", 3, "20:35", "20:40", 5, 1, 263), ("BRC", 4, "22:28", "22:38", 10, 1, 392), ("KOTA", 5, "05:30", "05:40", 10, 2, 920), ("JP", 6, "10:30", "10:30", 0, 2, 1159)]),
 
         # Kolkata to South & West
         ("12841", "Coromandel Express", "Superfast", "HWH", "MAS", "15:20", "17:00", 25.6, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("HWH", 0, "15:20", "15:20", 0, 1, 0), ("MAS", 1, "17:00", "17:00", 0, 2, 1662)]),
+         [("HWH", 0, "15:20", "15:20", 0, 1, 0), ("KGP", 1, "17:00", "17:05", 5, 1, 115), ("BBS", 2, "21:50", "21:55", 5, 1, 437), ("VSKP", 3, "04:25", "04:45", 20, 2, 881), ("BZA", 4, "10:15", "10:25", 10, 2, 1231), ("MAS", 5, "17:00", "17:00", 0, 2, 1662)]),
         ("12842", "Coromandel Express Return", "Superfast", "MAS", "HWH", "07:00", "10:40", 27.6, "1,2,3,4,5,6,7", "1A,2A,3A,SL",
-         [("MAS", 0, "07:00", "07:00", 0, 1, 0), ("HWH", 1, "10:40", "10:40", 0, 2, 1662)]),
+         [("MAS", 0, "07:00", "07:00", 0, 1, 0), ("BZA", 1, "12:55", "13:05", 10, 1, 431), ("VSKP", 2, "19:30", "19:50", 20, 1, 781), ("BBS", 3, "02:15", "02:20", 5, 2, 1225), ("KGP", 4, "06:30", "06:35", 5, 2, 1547), ("HWH", 5, "10:40", "10:40", 0, 2, 1662)]),
         ("12245", "Howrah - Yesvantpur Duronto", "Duronto", "HWH", "SBC", "10:50", "16:00", 29.1, "2,3,5,6,7", "1A,2A,3A,SL",
-         [("HWH", 0, "10:50", "10:50", 0, 1, 0), ("SBC", 1, "16:00", "16:00", 0, 2, 1946)]),
+         [("HWH", 0, "10:50", "10:50", 0, 1, 0), ("BBS", 1, "16:20", "16:30", 10, 1, 437), ("BZA", 2, "04:15", "04:25", 10, 2, 1231), ("SBC", 3, "16:00", "16:00", 0, 2, 1946)]),
         ("12051", "Mumbai CSMT - Madgaon Jan Shatabdi", "Superfast", "CSMT", "PUNE", "05:10", "08:40", 3.5, "1,2,3,4,5,6,7", "CC,2S",
-         [("CSMT", 0, "05:10", "05:10", 0, 1, 0), ("TNA", 1, "05:43", "05:45", 2, 1, 34), ("PUNE", 2, "08:40", "08:40", 0, 1, 192)])
+         [("CSMT", 0, "05:10", "05:10", 0, 1, 0), ("DR", 1, "05:21", "05:23", 2, 1, 9), ("TNA", 2, "05:43", "05:45", 2, 1, 34), ("KYN", 3, "06:03", "06:05", 2, 1, 54), ("PUNE", 4, "08:40", "08:40", 0, 1, 192)])
     ]
 
+    suburban_trains = get_mumbai_suburban_trains_spec()
+    trains_spec.extend(suburban_trains)
+    print(f"Total Trains to seed: {len(trains_spec)} ({len(suburban_trains)} Mumbai Suburban EMU services + {len(trains_spec) - len(suburban_trains)} Long Distance services).")
+
     coach_templates = {
+        "Suburban EMU": [
+            ("ENG", "LOCO", "Platform Front"),
+            ("GEN1", "2S", "Platform Zone A"),
+            ("GEN2", "2S", "Platform Zone A"),
+            ("FC1", "CC", "Platform Zone B"),
+            ("GEN3", "2S", "Platform Zone B"),
+            ("GEN4", "2S", "Platform Zone C"),
+            ("FC2", "CC", "Platform Zone C"),
+            ("GEN5", "2S", "Platform Zone D"),
+            ("GEN6", "2S", "Platform Zone D"),
+            ("ENG", "LOCO", "Platform Rear"),
+        ],
         "Rajdhani": [
             ("ENG", "LOCO", "Platform Front"),
             ("EOG", "GEN", "Platform Zone A"),
@@ -317,7 +452,7 @@ def seed():
         base_fare=2280.0,
         taxes=75.0,
         total_amount=2355.0,
-        qr_code="RAILMATE:PNR:8421098451:MMCT:NDLS:3A:CONFIRMED"
+        qr_code="RAILONE:PNR:8421098451:MMCT:NDLS:3A:CONFIRMED"
     )
     db.add(sample_booking)
     db.flush()
@@ -371,7 +506,7 @@ def seed():
         base_fare=390.0,
         taxes=30.0,
         total_amount=420.0,
-        qr_code="RAILMATE:PNR:4521098420:CSMT:PUNE:CC:COMPLETED"
+        qr_code="RAILONE:PNR:4521098420:CSMT:PUNE:CC:COMPLETED"
     )
     db.add(past_booking)
     db.flush()
@@ -393,7 +528,7 @@ def seed():
         base_fare=920.0,
         taxes=45.0,
         total_amount=965.0,
-        qr_code="RAILMATE:PNR:6521908412:MMCT:ADI:CC:CANCELLED"
+        qr_code="RAILONE:PNR:6521908412:MMCT:ADI:CC:CANCELLED"
     )
     db.add(cancelled_booking)
     db.flush()
@@ -644,7 +779,7 @@ def seed():
         ("Coach Position Announced", "Your coach B2 on Train 12951 will be positioned at Platform Zone B.", "general", False),
         ("Safety Advisory: Fog Season Protocol", "Northern Railway has implemented automated fog safety devices on all Rajdhani express rakes.", "general", False),
         ("Complaint Resolved: CMP-392018", "Your complaint regarding catering service on Deccan Queen has been successfully resolved.", "support", False),
-        ("Welcome to RailMate!", "Explore seamless ticket booking, live train tracking, PNR status, and onboard e-catering.", "general", True),
+        ("Welcome to RailOne!", "Explore seamless ticket booking, live train tracking, PNR status, and onboard e-catering.", "general", True),
     ]
 
     for title, msg, cat, is_read in notifications_data:

@@ -9,6 +9,9 @@ export interface User {
   address?: string;
   profile_completion: number;
   is_active: boolean;
+  is_phone_verified?: boolean;
+  mpin_enabled?: boolean;
+  biometric_enabled?: boolean;
   created_at?: string;
   passengers?: Passenger[];
 }
@@ -31,9 +34,38 @@ export interface Station {
   city: string;
   state: string;
   zone?: string;
+  railway_zone?: string;
+  division?: string;
+  search_aliases?: string;
+  is_active?: boolean;
+  is_junction?: boolean;
+  is_major?: boolean;
   platform_count: number;
   latitude?: number;
   longitude?: number;
+}
+
+export interface MPINStatus {
+  mpin_enabled: boolean;
+  has_mpin: boolean;
+  is_locked: boolean;
+  locked_until?: string | null;
+  attempts_remaining: number;
+}
+
+export interface BiometricStatus {
+  biometric_enabled: boolean;
+  credentials_count: number;
+  device_names: string[];
+}
+
+export interface BiometricChallenge {
+  challenge: string;
+  rp_id: string;
+  rp_name: string;
+  user_id: string;
+  user_name: string;
+  user_display_name: string;
 }
 
 export interface ClassAvailability {

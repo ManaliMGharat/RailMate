@@ -1,17 +1,17 @@
-# RailMate — Your Journey, Simplified.
+# RailOne — Your Journey, Simplified.
 
 A complete full-stack mobile-first railway journey application inspired by modern Indian railway super-apps, featuring an original visual identity, rich feature set, and production-ready architecture.
 
 > [!NOTE]
 > **Learning / Demonstration Project Notice**:
-> This application is an educational prototype named **RailMate**. All train schedules, PNR statuses, coach layouts, simulated GPS positions, and payment gateways operate in **Demo Mode** using simulated data (*"Demo data — not live railway information"*). It is not affiliated with or endorsed by CRIS, IRCTC, or Indian Railways.
+> This application is an educational prototype named **RailOne**. All train schedules, PNR statuses, coach layouts, simulated GPS positions, and payment gateways operate in **Demo Mode** using simulated data (*"Demo data — not live railway information"*). It is not affiliated with or endorsed by CRIS, IRCTC, or Indian Railways.
 
 ---
 
 ## 📸 Key Features
 
 - **Pixel-Accurate Visual Hierarchy (Mobile-First 360px–430px & Responsive Desktop)**:
-  - Top header with circular Language Switcher button (`A/अ`), centered geometric RailMate logo, and Notification bell with active red badge count (`15`).
+  - Top header with circular Language Switcher button (`A/अ`), centered geometric RailOne logo, and Notification bell with active red badge count (`15`).
   - Personalized dynamic greeting: *"Hi, Manali Manish Gharat!"*.
   - **Journey Planner Section**: 3 large rounded cards (**Reserved**, **Unreserved**, **Platform**) with custom SVG travel illustrations.
   - **More Offerings Grid**: 8 colorful pastel squircle service tiles:
@@ -27,7 +27,16 @@ A complete full-stack mobile-first railway journey application inspired by moder
   - Fixed bright blue bottom navigation bar (**Home**, **My Bookings**, **You**, **Menu**) with active pill indicators.
 
 - **Complete Feature Suite**:
-  - **Reserved Ticket Booking**: Autocomplete station search, calendar picker, class (1A, 2A, 3A, 3E, SL, CC, EC, 2S), quotas (General, Tatkal, Ladies, Senior Citizen, Divyang), live seat availability with probabilities.
+  - **Comprehensive Railway Station Master & Ranked Search**: 150+ master Indian Railway junctions, terminals, and divisional stations with canonical codes (`KYN`, `CSMT`, `MMCT`, `NDLS`, `PUNE`, `HWH`, `MAS`, `SBC`, etc.), railway zones, divisions, and search aliases (`cst`/`vt` $\rightarrow$ CSMT, `bombay` $\rightarrow$ Mumbai stations, `delhi` $\rightarrow$ Delhi terminals). Scored live search ranking (exact code match > prefix code > name > city > aliases) with popular station chips and `localStorage` recent stations.
+  - **City Cluster / Terminal Search Aggregation**: Travelers searching metropolitan terminals like `MMCT` $\rightarrow$ `PUNE` automatically match corridor trains across Mumbai and Pune clusters even if trains originate at adjacent terminals (e.g. CSMT, Dadar, LTT).
+  - **Dynamic UTS / Unreserved Station Selection**: Unreserved journey, platform ticket, and season pass station selection seamlessly browses the complete station master via autocomplete drawer and modal browser with station swapping and same-station error prevention.
+  - **Indian Phone Number Registration & OTP Verification**: Sign-up with 10-digit Indian mobile number (`+91XXXXXXXXXX`), phone OTP verification with 6-digit passcode (`123456`), verified phone badge on User Account page, and verification prompts.
+  - **Intermediate Route Search & Ordering**: Searches evaluate `src_schedule.stop_sequence < dst_schedule.stop_sequence` so intermediate junction journeys (e.g. Kalyan $\rightarrow$ Pune, Dadar $\rightarrow$ Delhi, Surat $\rightarrow$ Vadodara) return accurate trains with dynamic intermediate departure/arrival times, intermediate durations, and pro-rated fares.
+  - **Station Swap & Validation UX**: Animated 180° rotation on From/To swap with validation preventing identical station selection.
+  - **6-Digit mPIN Security**: Bcrypt-hashed passcodes (never plaintext) with dedicated 6-dot circle keypad, shake animation on error, 5 failed attempts limit, and 15-minute temporary lockout.
+  - **WebAuthn Biometric Authentication**: W3C FIDO2 standard platform authenticator (Windows Hello, Touch ID, Face ID, Android Biometrics). Seamless priority login: Biometrics first $\rightarrow$ immediate fallback to 6-digit mPIN $\rightarrow$ password login.
+  - **Security & Fast Login Settings**: Configurable under `You -> Account -> Security & Fast Login` with mPIN setup/change/toggle and biometric passkey device registration.
+  - **Reserved Ticket Booking**: Autocomplete station search drawer, calendar picker, class (1A, 2A, 3A, 3E, SL, CC, EC, 2S), quotas (General, Tatkal, Ladies, Senior Citizen, Divyang), live seat availability with probabilities.
   - **Passenger Details & Master List**: Berth preferences (Lower, Middle, Upper, Side Lower, Side Upper), meal preferences, saved traveler chips.
   - **Mock Payment Gateway**: UPI, R-Wallet, Cards, Netbanking with animated multi-stage verification and confetti celebration.
   - **Digital Travel Ticket**: 10-digit PNR, booking ID, allocated coach & berth, QR verification code, PDF print/download, sharing, and instant cancellation.
@@ -92,7 +101,7 @@ A complete full-stack mobile-first railway journey application inspired by moder
 pip install -r backend/requirements.txt
 pip install email-validator bcrypt
 
-# Seed the database with 32 trains, 15 stations, sample PNRs, food menus:
+# Seed the database with 36 trains, 152 stations, sample PNRs, food menus:
 $env:PYTHONPATH="backend"
 python backend/app/seed/seed_data.py
 
@@ -135,15 +144,15 @@ docker-compose up --build
 
 | Role | Email / Login | Password | Initial State |
 | :--- | :--- | :--- | :--- |
-| **Demo User** | `demo@railmate.com` | `password123` | Logged in as **Manali Manish Gharat**, ₹2,500 R-Wallet balance, 15 unread alerts |
-| **Administrator** | `admin@railmate.com` | `adminpassword123` | Full access to Admin Control Center & Operations |
+| **Demo User** | `demo@railone.com` | `password123` | Logged in as **Manali Manish Gharat**, ₹2,500 R-Wallet balance, 15 unread alerts, Verified Phone (`+919876543210`) |
+| **Administrator** | `admin@railone.com` | `adminpassword123` | Full access to Admin Control Center & Operations |
 
 ---
 
 ## 🧪 Running Automated Tests
 
 ```bash
-# Run backend pytest suite (covers auth, search, booking, pnr, tracking, wallet):
+# Run backend pytest suite (covers auth, search, booking, pnr, tracking, wallet, phone OTP):
 $env:PYTHONPATH="backend"
 pytest backend/tests -v
 ```
@@ -163,10 +172,10 @@ RailGo/
 ├── backend/
 │   ├── app/
 │   │   ├── core/         # Config, Database engine, Security & JWT
-│   │   ├── models/       # 20+ SQLAlchemy models (User, Train, Booking, PNR, etc.)
+│   │   ├── models/       # SQLAlchemy models (User, PhoneOTP, Train, Booking, PNR, etc.)
 │   │   ├── schemas/      # Pydantic v2 validation models
 │   │   ├── routers/      # REST API route handlers
-│   │   ├── seed/         # Rich seeder script (32 trains, 15 stations, menus, PNRs)
+│   │   ├── seed/         # Rich seeder script (36 trains, 152 stations, menus, PNRs)
 │   │   └── main.py       # FastAPI application entrypoint
 │   ├── tests/            # Pytest test suite
 │   ├── requirements.txt
@@ -174,10 +183,10 @@ RailGo/
 ├── frontend/
 │   ├── src/
 │   │   ├── api/          # API client & fetch abstraction
-│   │   ├── assets/       # Original SVG travel illustrations & RailMate logo
+│   │   ├── assets/       # Original SVG travel illustrations & RailOne logo
 │   │   ├── components/   # Header, BottomNav, StationAutocomplete, Notices
 │   │   ├── context/      # AuthContext & LanguageContext (EN, HI, MR)
-│   │   ├── pages/        # All 18 feature screens
+│   │   ├── pages/        # All feature screens
 │   │   ├── types/        # TypeScript interfaces
 │   │   ├── App.tsx       # Router configuration & mobile layout frame
 │   │   └── index.css     # Tailwind styling

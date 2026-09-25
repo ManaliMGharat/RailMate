@@ -48,7 +48,7 @@ export const RefundsPage: React.FC = () => {
           <div>• Sleeper Class: ₹120 / pax</div>
         </div>
         <p className="text-[10px] text-blue-600 font-medium pt-1">
-          Refunds on RailMate are credited directly to your R-Wallet balance instantly.
+          Refunds on RailOne are credited directly to your R-Wallet balance instantly.
         </p>
       </div>
 

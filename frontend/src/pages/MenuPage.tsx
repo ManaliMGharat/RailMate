@@ -76,7 +76,7 @@ export const MenuPage: React.FC = () => {
           All Services Directory
         </h1>
         <p className="text-xs text-slate-500 font-medium">
-          Comprehensive access to all RailMate digital railway tools
+          Comprehensive access to all RailOne digital railway tools
         </p>
       </div>
 
@@ -110,7 +110,7 @@ export const MenuPage: React.FC = () => {
 
       {/* About Box */}
       <div className="bg-slate-50 rounded-2xl p-4 text-center text-xs text-slate-500 space-y-1 border border-slate-200/60">
-        <span className="font-extrabold text-slate-800 block">RailMate v1.0.0 (Demo Mode)</span>
+        <span className="font-extrabold text-slate-800 block">RailOne v1.0.0 (Demo Mode)</span>
         <p className="text-[11px] text-slate-400">
           Independent educational demo. Not affiliated with IRCTC or CRIS.
         </p>

@@ -40,9 +40,16 @@ export const ReservedBooking: React.FC = () => {
     platform_count: 16,
   });
 
+  const getLocalDateStr = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const defaultDate = new Date();
   defaultDate.setDate(defaultDate.getDate() + 3);
-  const [journeyDate, setJourneyDate] = useState(defaultDate.toISOString().split('T')[0]);
+  const [journeyDate, setJourneyDate] = useState(getLocalDateStr(defaultDate));
 
   const [selectedClass, setSelectedClass] = useState<string>('ALL');
   const [selectedQuota, setSelectedQuota] = useState<string>('General');
@@ -55,16 +62,51 @@ export const ReservedBooking: React.FC = () => {
 
   const quotas = ['General', 'Tatkal', 'Ladies', 'Senior Citizen', 'Divyang'];
   const classesList = ['ALL', '1A', '2A', '3A', '3E', 'SL', 'CC', 'EC', '2S'];
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [stationError, setStationError] = useState<string | null>(null);
 
   const handleSwapStations = () => {
+    if (!fromStation || !toStation) return;
+    if (fromStation.code === toStation.code) {
+      setStationError('Departure and arrival stations cannot be the same.');
+      return;
+    }
+    setStationError(null);
+    setIsSwapping(true);
+    setTimeout(() => setIsSwapping(false), 350);
+
     const temp = fromStation;
     setFromStation(toStation);
     setToStation(temp);
   };
 
+  const handleSelectFromStation = (st: Station) => {
+    if (toStation && toStation.code === st.code) {
+      setStationError('Departure and arrival stations cannot be the same.');
+      return;
+    }
+    setStationError(null);
+    setFromStation(st);
+  };
+
+  const handleSelectToStation = (st: Station) => {
+    if (fromStation && fromStation.code === st.code) {
+      setStationError('Departure and arrival stations cannot be the same.');
+      return;
+    }
+    setStationError(null);
+    setToStation(st);
+  };
+
   const fetchTrains = async () => {
     if (!fromStation || !toStation) return;
+    if (fromStation.code === toStation.code) {
+      setStationError('Departure and arrival stations cannot be the same.');
+      setTrains([]);
+      return;
+    }
     setLoading(true);
+    setStationError(null);
     try {
       const query = `/trains/search?from_station=${fromStation.code}&to_station=${toStation.code}&date=${journeyDate}&quota=${selectedQuota}&sort_by=${sortBy}${
         selectedClass !== 'ALL' ? `&class_type=${selectedClass}` : ''
@@ -90,7 +132,7 @@ export const ReservedBooking: React.FC = () => {
 
   useEffect(() => {
     fetchTrains();
-  }, [selectedQuota, sortBy, selectedClass]);
+  }, [fromStation?.code, toStation?.code, selectedQuota, sortBy, selectedClass, journeyDate]);
 
   const handleProceedToBooking = (train: Train) => {
     const chosenClass = selectedClassMap[train.id] || train.classes[0];
@@ -129,7 +171,8 @@ export const ReservedBooking: React.FC = () => {
           <StationAutocomplete
             label="From"
             selectedStation={fromStation}
-            onSelect={setFromStation}
+            onSelect={handleSelectFromStation}
+            oppositeStation={toStation}
             iconColor="text-emerald-600"
           />
 
@@ -137,7 +180,10 @@ export const ReservedBooking: React.FC = () => {
             <button
               type="button"
               onClick={handleSwapStations}
-              className="w-8 h-8 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 hover:text-blue-600 active:scale-90 transition-all"
+              className={`w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center text-slate-600 hover:text-blue-600 hover:border-blue-400 active:scale-90 transition-all ${
+                isSwapping ? 'rotate-180 scale-110 text-blue-600 border-blue-500' : ''
+              }`}
+              title="Swap From and To stations"
               aria-label="Swap Stations"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 rotate-90" />
@@ -147,10 +193,18 @@ export const ReservedBooking: React.FC = () => {
           <StationAutocomplete
             label="To"
             selectedStation={toStation}
-            onSelect={setToStation}
+            onSelect={handleSelectToStation}
+            oppositeStation={fromStation}
             iconColor="text-blue-600"
           />
         </div>
+
+        {stationError && (
+          <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl animate-in fade-in">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{stationError}</span>
+          </div>
+        )}
 
         {/* Date and Quota Row */}
         <div className="grid grid-cols-2 gap-2.5 pt-1">

@@ -18,6 +18,22 @@ class StatusUpdateRequest(BaseModel):
     status: str
     notes: Optional[str] = None
 
+class CreateStationRequest(BaseModel):
+    name: str
+    code: str
+    state: str
+    zone: str
+    city: Optional[str] = None
+    is_active: bool = True
+
+class UpdateStationRequest(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    state: Optional[str] = None
+    zone: Optional[str] = None
+    city: Optional[str] = None
+    is_active: Optional[bool] = None
+
 class CreateTrainRequest(BaseModel):
     number: str
     name: str
@@ -189,3 +205,116 @@ def update_food_order_status(
     o.status = req.status
     db.commit()
     return {"success": True, "message": f"Food order status updated to {req.status}"}
+
+@router.get("/stations")
+def list_stations_admin(
+    q: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Station)
+    if q and q.strip():
+        term = f"%{q.strip().lower()}%"
+        query = query.filter(
+            (Station.code.ilike(term)) |
+            (Station.name.ilike(term)) |
+            (Station.state.ilike(term)) |
+            (Station.zone.ilike(term))
+        )
+    total = query.count()
+    stations = query.order_by(Station.name.asc()).offset(offset).limit(limit).all()
+    return {
+        "total": total,
+        "stations": [
+            {
+                "id": s.id,
+                "name": s.name,
+                "code": s.code,
+                "state": s.state,
+                "railway_zone": s.zone or "NR",
+                "city": s.city,
+                "status": "Active" if s.is_active else "Disabled",
+                "is_active": s.is_active
+            }
+            for s in stations
+        ]
+    }
+
+@router.post("/stations")
+def create_station_admin(
+    req: CreateStationRequest,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    code = req.code.strip().upper()
+    existing = db.query(Station).filter(Station.code == code).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Station code '{code}' already exists")
+    
+    city = req.city.strip() if req.city else req.name.strip().split(" Junction")[0].split(" Jn")[0].split(" Central")[0].split(" Terminus")[0]
+    station = Station(
+        code=code,
+        name=req.name.strip(),
+        city=city,
+        state=req.state.strip(),
+        zone=req.zone.strip(),
+        search_aliases=f"{req.name.lower()}, {code.lower()}",
+        is_active=req.is_active,
+        is_major=True,
+        platform_count=6,
+        latitude=20.0,
+        longitude=78.0
+    )
+    db.add(station)
+    db.commit()
+    db.refresh(station)
+    return {"success": True, "message": f"Station {code} created successfully", "station_id": station.id}
+
+@router.put("/stations/{station_id}")
+def update_station_admin(
+    station_id: int,
+    req: UpdateStationRequest,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    station = db.query(Station).filter(Station.id == station_id).first()
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+    
+    if req.code:
+        new_code = req.code.strip().upper()
+        if new_code != station.code:
+            existing = db.query(Station).filter(Station.code == new_code).first()
+            if existing:
+                raise HTTPException(status_code=400, detail=f"Station code '{new_code}' already exists")
+            station.code = new_code
+    
+    if req.name is not None:
+        station.name = req.name.strip()
+    if req.state is not None:
+        station.state = req.state.strip()
+    if req.zone is not None:
+        station.zone = req.zone.strip()
+    if req.city is not None:
+        station.city = req.city.strip()
+    if req.is_active is not None:
+        station.is_active = req.is_active
+
+    db.commit()
+    return {"success": True, "message": f"Station {station.code} updated successfully"}
+
+@router.put("/stations/{station_id}/toggle-status")
+def toggle_station_status_admin(
+    station_id: int,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    station = db.query(Station).filter(Station.id == station_id).first()
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+    station.is_active = not station.is_active
+    db.commit()
+    return {"success": True, "is_active": station.is_active, "message": f"Station {station.code} is now {'Active' if station.is_active else 'Disabled'}"}
+

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
-import { RailMateLogo } from '../assets/illustrations';
+import { RailOneLogo } from '../assets/illustrations';
 import { useLanguage, Language } from '../context/LanguageContext';
 
 interface HeaderProps {
@@ -60,12 +60,12 @@ export const Header: React.FC<HeaderProps> = ({ unreadCount = 15, onOpenNotifica
         )}
       </div>
 
-      {/* Center: RailMate Logo */}
+      {/* Center: RailOne Logo */}
       <div
         onClick={() => navigate('/')}
         className="cursor-pointer transition-transform active:scale-95 flex items-center justify-center"
       >
-        <RailMateLogo size={28} />
+        <RailOneLogo size={28} />
       </div>
 
       {/* Right: Notification Bell with Badge */}

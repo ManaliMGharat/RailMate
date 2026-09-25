@@ -1,31 +1,21 @@
 import React from 'react';
 
-export const RailMateLogo: React.FC<{ className?: string; size?: number }> = ({ className = '', size = 32 }) => (
-  <div className={`flex items-center gap-2 select-none ${className}`}>
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="48" height="48" rx="14" fill="#1A56DB" />
-      {/* Front locomotive contour */}
-      <path d="M14 13C14 10.7909 15.7909 9 18 9H30C32.2091 9 34 10.7909 34 13V30C34 32.7614 31.7614 35 29 35H19C16.2386 35 14 32.7614 14 30V13Z" fill="white" />
-      {/* Windshield */}
-      <path d="M17 14C17 12.8954 17.8954 12 19 12H29C30.1046 12 31 12.8954 31 14V19H17V14Z" fill="#1E293B" />
-      {/* Twin Headlights */}
-      <circle cx="20" cy="29" r="2.2" fill="#F59E0B" />
-      <circle cx="28" cy="29" r="2.2" fill="#F59E0B" />
-      <path d="M22 24H26" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
-      {/* Parallel tracks below */}
-      <path d="M10 40L16 35M38 40L32 35" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M13 38H35" stroke="white" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-    <div className="flex flex-col">
-      <span className="text-[22px] font-extrabold tracking-tight text-slate-800 leading-none">
-        Rail<span className="text-blue-600">Mate</span>
+export const RailOneLogo: React.FC<{ className?: string; size?: number }> = ({ className = '', size = 30 }) => (
+  <div className={`flex items-center justify-center select-none ${className}`}>
+    <span className="text-[26px] sm:text-[28px] font-extrabold tracking-tight text-[#172A63] flex items-center font-sans">
+      <span>Ra</span>
+      <span className="relative inline-block">
+        <span>ı</span>
+        <span className="absolute top-[3px] left-[1.5px] w-[5.5px] h-[5.5px] rounded-full bg-[#FF7A00]" />
       </span>
-      <span className="text-[9px] font-semibold tracking-wider uppercase text-slate-400 mt-0.5">
-        Journey Simplified
-      </span>
-    </div>
+      <span>l</span>
+      <span className="text-[#FF7A00] ml-0.5 font-black">One</span>
+    </span>
   </div>
 );
+
+export const RailMateLogo = RailOneLogo;
+
 
 // 1. Reserved Train Journey Card Illustration
 export const ReservedIllustration: React.FC<{ className?: string }> = ({ className = '' }) => (

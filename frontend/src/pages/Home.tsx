@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -11,12 +11,11 @@ import {
   Wallet,
   Clock,
   MapPin,
-  Calendar,
   Sparkles,
   ChevronRight,
   ShieldCheck,
-  Building2,
-  Users
+  Fingerprint,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -26,147 +25,153 @@ import {
   PlatformIllustration,
 } from '../assets/illustrations';
 import { DemoNoticeBanner } from '../components/DemoNoticeBanner';
+import { FastLoginModal } from '../components/FastLoginModal';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const [showFastLogin, setShowFastLogin] = useState(false);
 
+  // Personalized Greeting: use current authenticated user's name, fallback to 'Manali Manish Gharat' or 'Manali'
   const userName = user?.full_name || 'Manali Manish Gharat';
 
-  // 8 Colorful pastel service tiles matching the screenshot
+  // 8 Colorful pastel service tiles matching the screenshot exactly
   const services = [
     {
       id: 'search',
-      title: t('search_trains'),
+      title: 'Search Trains',
       icon: Search,
-      bg: 'bg-rose-50 hover:bg-rose-100/80 border-rose-100',
-      iconColor: 'text-rose-500',
+      bg: 'bg-[#FDF2F4] hover:bg-[#FCE7EB] border-[#FCE7EB]',
+      iconColor: 'text-[#E11D48]',
       path: '/search',
     },
     {
       id: 'pnr',
-      title: t('pnr_status'),
+      title: 'PNR Status',
       icon: Ticket,
-      bg: 'bg-emerald-50 hover:bg-emerald-100/80 border-emerald-100',
-      iconColor: 'text-emerald-600',
+      bg: 'bg-[#F0FDF4] hover:bg-[#DCFCE7] border-[#DCFCE7]',
+      iconColor: 'text-[#16A34A]',
       path: '/pnr',
     },
     {
       id: 'coach',
-      title: t('coach_position'),
+      title: 'Coach Position',
       icon: TrainTrack,
-      bg: 'bg-sky-50 hover:bg-sky-100/80 border-sky-100',
-      iconColor: 'text-sky-600',
+      bg: 'bg-[#F0F9FF] hover:bg-[#E0F2FE] border-[#E0F2FE]',
+      iconColor: 'text-[#0284C7]',
       path: '/coach-position',
     },
     {
       id: 'track',
-      title: t('track_your_train'),
+      title: 'Track Your Train',
       icon: Radio,
-      bg: 'bg-amber-50 hover:bg-amber-100/80 border-amber-100',
-      iconColor: 'text-amber-600',
+      bg: 'bg-[#FEFCE8] hover:bg-[#FEF9C3] border-[#FEF9C3]',
+      iconColor: 'text-[#CA8A04]',
       path: '/track-train',
     },
     {
       id: 'food',
-      title: t('order_food'),
+      title: 'Order Food',
       icon: UtensilsCrossed,
-      bg: 'bg-purple-50 hover:bg-purple-100/80 border-purple-100',
-      iconColor: 'text-purple-600',
+      bg: 'bg-[#F3E8FF] hover:bg-[#E9D5FF] border-[#E9D5FF]',
+      iconColor: 'text-[#9333EA]',
       path: '/food',
     },
     {
       id: 'refund',
-      title: t('file_refund'),
-      icon: Clock,
-      bg: 'bg-slate-100 hover:bg-slate-200/80 border-slate-200',
-      iconColor: 'text-slate-600',
+      title: 'File Refund',
+      icon: RotateCcw,
+      bg: 'bg-[#F1F5F9] hover:bg-[#E2E8F0] border-[#E2E8F0]',
+      iconColor: 'text-[#475569]',
       path: '/refunds',
     },
     {
       id: 'support',
-      title: t('rail_support'),
+      title: 'Rail Madad',
       icon: HeartHandshake,
-      bg: 'bg-red-50 hover:bg-red-100/80 border-red-100',
-      iconColor: 'text-red-500',
+      bg: 'bg-[#FEE2E2] hover:bg-[#FECACA] border-[#FECACA]',
+      iconColor: 'text-[#EF4444]',
       path: '/support',
     },
     {
-      id: 'wallet',
-      title: t('wallet_services'),
+      id: 'waves',
+      title: 'Go To WAVES',
       icon: Wallet,
-      bg: 'bg-indigo-50 hover:bg-indigo-100/80 border-indigo-100',
-      iconColor: 'text-indigo-600',
+      bg: 'bg-[#505A6F] hover:bg-[#434C5E] border-[#434C5E]',
+      iconColor: 'text-white',
       path: '/wallet',
     },
   ];
 
-  // Did you know cards
+  // Did you know cards matching screenshot
   const triviaCards = [
     {
       id: 1,
-      badge: 'Heritage',
-      title: 'First Journey in 1853',
-      text: 'India’s first passenger train traversed 34 km between Bori Bunder (CSMT) and Thane on 16 April 1853.',
-      image: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=500&auto=format&fit=crop&q=60',
-      gradient: 'from-amber-600 to-amber-900',
+      title: 'First Passenger Train (1853)',
+      text: 'First ever passenger train was run between Bori Bandar to Thane on April 16, 1853.',
+      image: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=500&auto=format&fit=crop&q=70',
     },
     {
       id: 2,
-      badge: 'Engineering Marvel',
-      title: 'Chenab Bridge (359m)',
-      text: 'Higher than the Eiffel Tower, the Chenab Arch Bridge in Kashmir is the world’s highest railway arch.',
-      image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500&auto=format&fit=crop&q=60',
-      gradient: 'from-blue-600 to-blue-900',
+      title: 'Highest Railway Bridge',
+      text: "Chenab Railway Bridge in Dharot, Jammu & Kashmir is the World's highest Railway Bridge.",
+      image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500&auto=format&fit=crop&q=70',
     },
     {
       id: 3,
-      badge: 'Speed & Tech',
-      title: 'Vande Bharat Express',
-      text: 'Indigenously built semi-high speed train capable of 180 km/h with Kavach automated anti-collision system.',
-      image: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=500&auto=format&fit=crop&q=60',
-      gradient: 'from-purple-600 to-indigo-900',
+      title: 'Vande Bharat Technology',
+      text: 'Indigenously built semi-high speed train capable of 180 km/h with automated doors and Kavach safety system.',
+      image: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=500&auto=format&fit=crop&q=70',
+    },
+    {
+      id: 4,
+      title: '100% Electrification',
+      text: 'Indian Railways is rapidly achieving 100% broad gauge electrification, pioneering green mass transit globally.',
+      image: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=500&auto=format&fit=crop&q=70',
     },
   ];
 
   return (
-    <div className="pb-24 pt-3 px-4 space-y-6">
+    <div className="pb-24 pt-2 px-4 space-y-6">
       <DemoNoticeBanner compact />
 
       {/* Greeting Banner */}
-      <div>
-        <h2 className="text-sm font-semibold text-slate-500 tracking-wide">
-          {t('greeting')}
-        </h2>
-        <h1 className="text-xl font-extrabold text-[#1B254B] tracking-tight">
-          {userName}!
-        </h1>
-      </div>
-
-      {/* SECTION 1: Journey Planner */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[#1B254B]">
-            {t('journey_planner')}
-          </h2>
-          <span className="text-[11px] font-semibold text-blue-600 flex items-center">
-            Tap to book <ChevronRight className="w-3.5 h-3.5" />
-          </span>
+      <div className="flex items-center justify-between pt-1">
+        <div>
+          <h1 className="text-[17px] font-bold text-[#172A63] tracking-tight">
+            Hi, {userName}!
+          </h1>
         </div>
 
-        {/* 3 Large Journey Cards */}
+        <button
+          type="button"
+          onClick={() => navigate('/login')}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/90 hover:bg-blue-100 text-blue-700 rounded-full text-[11px] font-bold transition-all border border-blue-200 shadow-2xs active:scale-95"
+          title="Sign in with mPIN or Biometrics"
+        >
+          <Fingerprint className="w-3.5 h-3.5 text-blue-600" />
+          <span>mPIN Login</span>
+        </button>
+      </div>
+
+      {/* SECTION 1: Journey Planner (3 Large Horizontal Cards) */}
+      <section className="space-y-3">
+        <h2 className="text-[18px] font-extrabold text-[#172A63] tracking-tight">
+          Journey Planner
+        </h2>
+
         <div className="grid grid-cols-3 gap-2.5">
           {/* 1. Reserved Card */}
           <div
             onClick={() => navigate('/search')}
             className="group cursor-pointer flex flex-col items-center text-center transition-all duration-200 active:scale-95"
           >
-            <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/80 shadow-soft bg-white p-1 group-hover:shadow-card group-hover:border-blue-300 transition-all">
-              <ReservedIllustration className="w-full h-full object-cover rounded-xl" />
+            <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/90 shadow-2xs bg-white group-hover:shadow-card group-hover:border-blue-300 transition-all">
+              <ReservedIllustration className="w-full h-full object-cover" />
             </div>
-            <span className="mt-2 text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
-              {t('reserved')}
+            <span className="mt-2 text-xs font-semibold text-[#475569] group-hover:text-blue-700 transition-colors">
+              Reserved
             </span>
           </div>
 
@@ -175,11 +180,11 @@ export const Home: React.FC = () => {
             onClick={() => navigate('/unreserved')}
             className="group cursor-pointer flex flex-col items-center text-center transition-all duration-200 active:scale-95"
           >
-            <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/80 shadow-soft bg-white p-1 group-hover:shadow-card group-hover:border-blue-300 transition-all">
-              <UnreservedIllustration className="w-full h-full object-cover rounded-xl" />
+            <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/90 shadow-2xs bg-white group-hover:shadow-card group-hover:border-blue-300 transition-all">
+              <UnreservedIllustration className="w-full h-full object-cover" />
             </div>
-            <span className="mt-2 text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
-              {t('unreserved')}
+            <span className="mt-2 text-xs font-semibold text-[#475569] group-hover:text-blue-700 transition-colors">
+              Unreserved
             </span>
           </div>
 
@@ -188,23 +193,23 @@ export const Home: React.FC = () => {
             onClick={() => navigate('/platform-ticket')}
             className="group cursor-pointer flex flex-col items-center text-center transition-all duration-200 active:scale-95"
           >
-            <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/80 shadow-soft bg-white p-1 group-hover:shadow-card group-hover:border-blue-300 transition-all">
-              <PlatformIllustration className="w-full h-full object-cover rounded-xl" />
+            <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200/90 shadow-2xs bg-white group-hover:shadow-card group-hover:border-blue-300 transition-all">
+              <PlatformIllustration className="w-full h-full object-cover" />
             </div>
-            <span className="mt-2 text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
-              {t('platform')}
+            <span className="mt-2 text-xs font-semibold text-[#475569] group-hover:text-blue-700 transition-colors">
+              Platform
             </span>
           </div>
         </div>
       </section>
 
-      {/* SECTION 2: More Offerings Grid */}
+      {/* SECTION 2: More Offerings Grid (4 columns, 8 pastel squircle tiles) */}
       <section className="space-y-3">
-        <h2 className="text-lg font-bold text-[#1B254B]">
-          {t('more_offerings')}
+        <h2 className="text-[18px] font-extrabold text-[#172A63] tracking-tight">
+          More Offerings
         </h2>
 
-        <div className="grid grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-4 gap-x-2 gap-y-3.5">
           {services.map((item) => {
             const Icon = item.icon;
             return (
@@ -214,11 +219,11 @@ export const Home: React.FC = () => {
                 className="flex flex-col items-center text-center group active:scale-95 transition-all"
               >
                 <div
-                  className={`w-14 h-14 rounded-2xl border flex items-center justify-center shadow-soft transition-all duration-200 group-hover:scale-105 group-hover:shadow-card ${item.bg}`}
+                  className={`w-14 h-14 sm:w-16 sm:h-16 rounded-[20px] border flex items-center justify-center shadow-2xs transition-all duration-200 group-hover:scale-105 group-hover:shadow-card ${item.bg}`}
                 >
                   <Icon className={`w-7 h-7 ${item.iconColor}`} />
                 </div>
-                <span className="mt-1.5 text-[11px] font-semibold text-slate-700 leading-tight group-hover:text-blue-600 transition-colors">
+                <span className="mt-1.5 text-[11px] font-semibold text-[#334155] leading-tight text-center line-clamp-2 max-w-[72px] group-hover:text-blue-700 transition-colors">
                   {item.title}
                 </span>
               </button>
@@ -227,61 +232,30 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Quick Transit Utilities Banner */}
-      <div className="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-2xl p-4 text-white shadow-card relative overflow-hidden">
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-full inline-block">
-              Station & Timetables
-            </span>
-            <h3 className="text-sm font-bold">Live Station Board</h3>
-            <p className="text-[11px] text-blue-100 max-w-[200px]">
-              Find real-time arrivals, departures, and platforms.
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/live-station')}
-            className="bg-white text-blue-800 font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:bg-blue-50 transition-all active:scale-95"
-          >
-            Check Now
-          </button>
-        </div>
-        {/* Subtle decorative background circles */}
-        <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
-      </div>
-
       {/* SECTION 3: Do You Know? Carousel */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[#1B254B] flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            {t('do_you_know')}
+          <h2 className="text-[18px] font-extrabold text-[#172A63] tracking-tight">
+            Do You know?
           </h2>
-          <span className="text-[11px] font-medium text-slate-400">Railway Heritage</span>
         </div>
 
-        <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 -mx-4 px-4 snap-x">
+        <div className="flex gap-3.5 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 snap-x scroll-smooth">
           {triviaCards.map((card) => (
             <div
               key={card.id}
-              className="snap-start shrink-0 w-[240px] rounded-2xl bg-white border border-slate-100 shadow-soft overflow-hidden group hover:shadow-card transition-all"
+              className="snap-start shrink-0 w-[240px] sm:w-[260px] rounded-2xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden group hover:shadow-card transition-all"
             >
-              <div className="h-28 relative overflow-hidden bg-slate-200">
+              <div className="h-32 relative overflow-hidden bg-slate-100">
                 <img
                   src={card.image}
                   alt={card.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  loading="lazy"
                 />
-                <div className={`absolute inset-0 bg-gradient-to-t ${card.gradient} opacity-50`} />
-                <span className="absolute top-2 left-2 text-[10px] font-extrabold uppercase tracking-wider bg-white/90 text-slate-900 px-2 py-0.5 rounded-md backdrop-blur-sm">
-                  {card.badge}
-                </span>
               </div>
               <div className="p-3">
-                <h4 className="text-xs font-bold text-slate-800 mb-1 line-clamp-1">
-                  {card.title}
-                </h4>
-                <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-2">
+                <p className="text-[11px] text-[#475569] font-medium leading-relaxed line-clamp-3">
                   {card.text}
                 </p>
               </div>
@@ -289,6 +263,83 @@ export const Home: React.FC = () => {
           ))}
         </div>
       </section>
+
+      {/* SECTION 4: Follow Us On Social Media Platforms (Matches Screenshot 3) */}
+      <section className="space-y-3">
+        <h2 className="text-[18px] font-extrabold text-[#172A63] tracking-tight">
+          Follow Us On Social Media Platforms
+        </h2>
+
+        <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-card border border-slate-200/80 group">
+          {/* Train crossing scenic bridge photo */}
+          <div className="h-44 sm:h-52 w-full relative bg-slate-900 overflow-hidden">
+            <img
+              src="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop&q=75"
+              alt="Indian Railways Scenic Bridge"
+              className="w-full h-full object-cover opacity-85 group-hover:scale-105 transition-transform duration-700"
+            />
+            {/* Subtle dusk overlay gradient */}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-slate-900/30" />
+
+            {/* 4 Centered Circular Social Icons */}
+            <div className="absolute inset-0 flex items-center justify-center gap-3.5 sm:gap-4 z-10">
+              {/* 1. X (Twitter) */}
+              <a
+                href="https://twitter.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Follow us on X"
+                className="w-11 h-11 rounded-full bg-black/90 hover:bg-black text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 hover:scale-110 border border-white/20"
+              >
+                <span className="font-extrabold text-base">✕</span>
+              </a>
+
+              {/* 2. Facebook */}
+              <a
+                href="https://facebook.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Follow us on Facebook"
+                className="w-11 h-11 rounded-full bg-[#1877F2] hover:bg-[#166FE5] text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 hover:scale-110 border border-white/20"
+              >
+                <span className="font-bold text-lg leading-none">f</span>
+              </a>
+
+              {/* 3. Instagram */}
+              <a
+                href="https://instagram.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Follow us on Instagram"
+                className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#F58529] via-[#DD2A7B] to-[#8134AF] text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 hover:scale-110 border border-white/20"
+              >
+                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                </svg>
+              </a>
+
+              {/* 4. YouTube */}
+              <a
+                href="https://youtube.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Subscribe to our YouTube"
+                className="w-11 h-11 rounded-full bg-[#FF0000] hover:bg-[#E60000] text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 hover:scale-110 border border-white/20"
+              >
+                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Fast Login Modal */}
+      <FastLoginModal
+        isOpen={showFastLogin}
+        onClose={() => setShowFastLogin(false)}
+      />
     </div>
   );
 };

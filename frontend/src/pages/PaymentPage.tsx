@@ -61,11 +61,13 @@ export const PaymentPage: React.FC = () => {
       await new Promise((r) => setTimeout(r, 800));
       setProcessingStep('Allocating seats and issuing PNR...');
 
-      // Call Backend API to create confirmed booking
+      // Call Backend API to create confirmed booking using canonical station codes
       const payload = {
         train_id: train.id,
         from_station_id: fromStation.id,
         to_station_id: toStation.id,
+        source_station_code: fromStation.code,
+        destination_station_code: toStation.code,
         journey_date: journeyDate,
         travel_class: chosenClass.class_code,
         quota: quota,

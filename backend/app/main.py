@@ -14,7 +14,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="RailMate - Mobile-first Railway Journey Super-App REST API"
+    description="RailOne - Mobile-first Railway Journey Super-App REST API"
 )
 
 # CORS configuration
@@ -67,7 +67,7 @@ app.include_router(admin.router, prefix=settings.API_V1_STR)
 @app.get("/")
 def root():
     return {
-        "name": "RailMate API",
+        "name": "RailOne API",
         "tagline": "Your journey, simplified.",
         "version": settings.VERSION,
         "docs_url": "/docs",
@@ -78,4 +78,4 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "service": "railmate-backend"}
+    return {"status": "healthy", "service": "railone-backend"}

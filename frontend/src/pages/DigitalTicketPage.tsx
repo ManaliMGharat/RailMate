@@ -51,14 +51,14 @@ export const DigitalTicketPage: React.FC = () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `RailMate Ticket: ${booking.train_number}`,
+          title: `RailOne Ticket: ${booking.train_number}`,
           text: `PNR: ${booking.pnr_number} • ${booking.from_station_name} to ${booking.to_station_name} on ${booking.journey_date}`,
           url: window.location.href,
         });
       } catch {}
     } else {
       navigator.clipboard.writeText(
-        `RailMate Ticket • PNR: ${booking.pnr_number} • Train: ${booking.train_number} ${booking.train_name} • ${booking.from_station_code} ➔ ${booking.to_station_code} (${booking.journey_date})`
+        `RailOne Ticket • PNR: ${booking.pnr_number} • Train: ${booking.train_number} ${booking.train_name} • ${booking.from_station_code} ➔ ${booking.to_station_code} (${booking.journey_date})`
       );
       alert('Ticket summary copied to clipboard!');
     }

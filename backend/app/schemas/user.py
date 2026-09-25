@@ -33,6 +33,7 @@ class UserResponse(BaseModel):
     address: Optional[str] = None
     profile_completion: int
     is_active: bool
+    is_phone_verified: bool = False
     created_at: datetime
     passengers: List[PassengerResponse] = []
 

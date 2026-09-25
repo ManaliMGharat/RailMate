@@ -59,7 +59,7 @@ export const WalletPage: React.FC = () => {
               <WalletIcon className="w-4 h-4 text-blue-400" />
             </div>
             <span className="text-xs font-black tracking-wider uppercase text-blue-200">
-              RailMate Cash
+              RailOne Cash
             </span>
           </div>
           <span className="text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded-full border border-white/20">

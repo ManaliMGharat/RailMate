@@ -30,7 +30,7 @@ export const AdminDashboard: React.FC = () => {
   const fetchStats = async () => {
     try {
       // First ensure we have admin token or login admin
-      const token = localStorage.getItem('railmate_token');
+      const token = localStorage.getItem('railone_token') || localStorage.getItem('railmate_token');
       const data = await apiRequest<any>('/admin/stats');
       setStats(data);
     } catch {

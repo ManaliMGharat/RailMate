@@ -4,7 +4,7 @@ export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = localStorage.getItem('railmate_token');
+  const token = localStorage.getItem('railone_token') || localStorage.getItem('railmate_token');
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

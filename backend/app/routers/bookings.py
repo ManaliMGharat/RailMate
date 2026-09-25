@@ -50,8 +50,23 @@ def create_booking(
     if not train:
         raise HTTPException(status_code=404, detail="Train not found")
 
-    from_st = db.query(Station).filter(Station.id == req.from_station_id).first()
-    to_st = db.query(Station).filter(Station.id == req.to_station_id).first()
+    # Canonical station code resolution
+    from_st = None
+    if req.source_station_code:
+        from_st = db.query(Station).filter(Station.code.ilike(req.source_station_code.strip())).first()
+    elif req.from_station_code:
+        from_st = db.query(Station).filter(Station.code.ilike(req.from_station_code.strip())).first()
+    elif req.from_station_id:
+        from_st = db.query(Station).filter(Station.id == req.from_station_id).first()
+
+    to_st = None
+    if req.destination_station_code:
+        to_st = db.query(Station).filter(Station.code.ilike(req.destination_station_code.strip())).first()
+    elif req.to_station_code:
+        to_st = db.query(Station).filter(Station.code.ilike(req.to_station_code.strip())).first()
+    elif req.to_station_id:
+        to_st = db.query(Station).filter(Station.id == req.to_station_id).first()
+
     if not from_st or not to_st:
         raise HTTPException(status_code=404, detail="Station not found")
 
@@ -85,7 +100,7 @@ def create_booking(
     # Generate 10 digit PNR
     pnr_num = f"{random.randint(2000000000, 8999999999)}"
     booking_ref = f"BK-{uuid.uuid4().hex[:6].upper()}"
-    qr_data = f"RAILMATE:PNR:{pnr_num}:{train.number}:{req.journey_date}:{req.travel_class}:CONFIRMED"
+    qr_data = f"RAILONE:PNR:{pnr_num}:{train.number}:{req.journey_date}:{req.travel_class}:CONFIRMED"
 
     booking = Booking(
         booking_ref=booking_ref,

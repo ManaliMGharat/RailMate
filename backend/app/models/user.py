@@ -17,6 +17,19 @@ class User(Base):
     address = Column(Text, nullable=True)
     profile_completion = Column(Integer, default=70)
     is_active = Column(Boolean, default=True)
+
+    # mPIN authentication
+    hashed_mpin = Column(String(255), nullable=True)
+    mpin_enabled = Column(Boolean, default=False)
+    mpin_failed_attempts = Column(Integer, default=0)
+    mpin_locked_until = Column(DateTime, nullable=True)
+
+    # Biometric authentication
+    biometric_enabled = Column(Boolean, default=False)
+
+    # Phone verification status
+    is_phone_verified = Column(Boolean, default=False)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -26,6 +39,7 @@ class User(Base):
     complaints = relationship("Complaint", back_populates="user")
     food_orders = relationship("FoodOrder", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
+    webauthn_credentials = relationship("WebAuthnCredential", back_populates="user", cascade="all, delete-orphan")
 
 class Passenger(Base):
     __tablename__ = "passengers"
@@ -42,3 +56,15 @@ class Passenger(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="passengers")
+
+class PhoneOTP(Base):
+    __tablename__ = "phone_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone_number = Column(String(20), index=True, nullable=False)
+    otp_code = Column(String(10), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    attempts = Column(Integer, default=0)
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+

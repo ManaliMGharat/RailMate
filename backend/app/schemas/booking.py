@@ -24,8 +24,12 @@ class BookingPassengerResponse(BaseModel):
 
 class BookingCreateRequest(BaseModel):
     train_id: int
-    from_station_id: int
-    to_station_id: int
+    from_station_id: Optional[int] = None
+    to_station_id: Optional[int] = None
+    source_station_code: Optional[str] = None
+    destination_station_code: Optional[str] = None
+    from_station_code: Optional[str] = None
+    to_station_code: Optional[str] = None
     journey_date: str # "YYYY-MM-DD"
     travel_class: str # "3A", "SL", etc.
     quota: Optional[str] = "General"

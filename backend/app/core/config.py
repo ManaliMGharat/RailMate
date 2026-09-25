@@ -2,7 +2,7 @@ import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "RailMate API"
+    PROJECT_NAME: str = "RailOne API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api"
     SECRET_KEY: str = os.getenv("SECRET_KEY", "railmate-super-secret-jwt-key-2026-production-ready")

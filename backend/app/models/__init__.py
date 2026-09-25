@@ -1,4 +1,4 @@
-from app.models.user import User, Passenger
+from app.models.user import User, Passenger, PhoneOTP
 from app.models.station import Station
 from app.models.train import Train, TrainSchedule, Coach, Seat
 from app.models.booking import Booking, BookingPassenger, Payment
@@ -9,10 +9,12 @@ from app.models.support import Complaint, ComplaintAttachment
 from app.models.refund import Refund
 from app.models.wallet import Wallet, WalletTransaction
 from app.models.notification import Notification
+from app.models.webauthn import WebAuthnCredential
 
 __all__ = [
     "User",
     "Passenger",
+    "PhoneOTP",
     "Station",
     "Train",
     "TrainSchedule",
@@ -33,4 +35,5 @@ __all__ = [
     "Wallet",
     "WalletTransaction",
     "Notification",
+    "WebAuthnCredential",
 ]

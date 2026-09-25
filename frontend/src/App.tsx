@@ -29,6 +29,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { UserProfilePage } from './pages/UserProfilePage';
 import { MenuPage } from './pages/MenuPage';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { LoginPage } from './pages/LoginPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,15 +51,18 @@ const AppLayout: React.FC = () => {
       .catch(() => {});
   }, [location.pathname]);
 
+  const isLoginPage = location.pathname === '/login';
+
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center selection:bg-blue-100">
       {/* Mobile-first centered app frame (360px - 430px mobile, cleanly contained on desktop) */}
       <div className="w-full max-w-md min-h-screen bg-white shadow-2xl relative flex flex-col">
-        <Header unreadCount={unreadCount} />
+        {!isLoginPage && <Header unreadCount={unreadCount} />}
 
         <main className="flex-1">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/login" element={<LoginPage />} />
             <Route path="/search" element={<ReservedBooking />} />
             <Route path="/train-schedule/:trainNumber" element={<TrainSchedulePage />} />
             <Route path="/passenger-details" element={<PassengerDetails />} />
@@ -83,7 +87,7 @@ const AppLayout: React.FC = () => {
           </Routes>
         </main>
 
-        <BottomNav />
+        {!isLoginPage && <BottomNav />}
       </div>
     </div>
   );

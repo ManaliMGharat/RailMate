@@ -10,7 +10,7 @@ interface LanguageContextType {
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
-    app_name: 'RailMate',
+    app_name: 'RailOne',
     tagline: 'Your journey, simplified.',
     greeting: 'Hi,',
     journey_planner: 'Journey Planner',
@@ -50,9 +50,15 @@ const translations: Record<Language, Record<string, string>> = {
     cancel_ticket: 'Cancel Ticket',
     track_status: 'Track Status',
     add_passenger: 'Add Passenger',
+    security_settings: 'Security & Fast Login',
+    mpin_login: '6-Digit mPIN Login',
+    biometric_login: 'Biometric Fast Login',
+    swap_stations: 'Swap Stations',
+    popular_stations: 'Popular Stations',
+    recent_stations: 'Recent Stations',
   },
   hi: {
-    app_name: 'रेलमैट (RailMate)',
+    app_name: 'रेलवन (RailOne)',
     tagline: 'आपकी यात्रा, हुई आसान।',
     greeting: 'नमस्ते,',
     journey_planner: 'यात्रा योजना (Journey Planner)',
@@ -92,9 +98,15 @@ const translations: Record<Language, Record<string, string>> = {
     cancel_ticket: 'टिकट रद्द करें',
     track_status: 'स्थिति जांचें',
     add_passenger: 'यात्री जोड़ें',
+    security_settings: 'सुरक्षा और फास्ट लॉगिन',
+    mpin_login: '6-अंकीय mPIN लॉगिन',
+    biometric_login: 'बायोमेट्रिक फास्ट लॉगिन',
+    swap_stations: 'स्थानक बदलें',
+    popular_stations: 'प्रमुख स्थानक',
+    recent_stations: 'हाल के स्थानक',
   },
   mr: {
-    app_name: 'रेलमैट (RailMate)',
+    app_name: 'रेलवन (RailOne)',
     tagline: 'तुमचा प्रवास, सोपा आणि सुकर.',
     greeting: 'नमस्कार,',
     journey_planner: 'प्रवास नियोजन (Journey Planner)',
@@ -134,6 +146,12 @@ const translations: Record<Language, Record<string, string>> = {
     cancel_ticket: 'तिकीट रद्द करा',
     track_status: 'स्थिती तपासा',
     add_passenger: 'प्रवासी जोडा',
+    security_settings: 'सुरक्षा आणि जलद लॉगिन',
+    mpin_login: '६-अंकी mPIN लॉगिन',
+    biometric_login: 'बायोमेट्रिक जलद लॉगिन',
+    swap_stations: 'स्थानके बदला',
+    popular_stations: 'प्रमुख स्थानके',
+    recent_stations: 'नुकतीच वापरलेली स्थानके',
   },
 };
 
@@ -145,12 +163,12 @@ const LanguageContext = createContext<LanguageContextType>({
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    return (localStorage.getItem('railmate_lang') as Language) || 'en';
+    return (localStorage.getItem('railone_lang') as Language) || (localStorage.getItem('railmate_lang') as Language) || 'en';
   });
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem('railmate_lang', lang);
+    localStorage.setItem('railone_lang', lang);
   };
 
   const t = (key: string): string => {

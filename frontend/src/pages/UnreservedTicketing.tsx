@@ -8,30 +8,71 @@ import {
   CheckCircle2,
   Users,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  ArrowUpDown
 } from 'lucide-react';
 import { apiRequest } from '../api/client';
-import { UnreservedTicket } from '../types';
+import { UnreservedTicket, Station } from '../types';
 import { DemoNoticeBanner } from '../components/DemoNoticeBanner';
+import { StationAutocomplete } from '../components/StationAutocomplete';
 
 export const UnreservedTicketing: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'JOURNEY' | 'PLATFORM' | 'SEASON'>('JOURNEY');
 
   // Journey Ticket Form
-  const [fromStation, setFromStation] = useState('Mumbai CSMT (CSMT)');
-  const [toStation, setToStation] = useState('Thane (TNA)');
+  const [fromStation, setFromStation] = useState<Station | null>({
+    id: 1,
+    code: 'CSMT',
+    name: 'Mumbai CSMT',
+    city: 'Mumbai',
+    state: 'Maharashtra',
+    platform_count: 18,
+  });
+  const [toStation, setToStation] = useState<Station | null>({
+    id: 2,
+    code: 'TNA',
+    name: 'Thane',
+    city: 'Thane',
+    state: 'Maharashtra',
+    platform_count: 10,
+  });
   const [paxCount, setPaxCount] = useState(1);
   const [travelClass, setTravelClass] = useState('II');
+  const [journeyError, setJourneyError] = useState<string | null>(null);
+  const [isSwappingJourney, setIsSwappingJourney] = useState(false);
 
   // Platform Ticket Form
-  const [platformStation, setPlatformStation] = useState('Mumbai Central (MMCT)');
+  const [platformStation, setPlatformStation] = useState<Station | null>({
+    id: 5,
+    code: 'MMCT',
+    name: 'Mumbai Central',
+    city: 'Mumbai',
+    state: 'Maharashtra',
+    platform_count: 8,
+  });
   const [platformPax, setPlatformPax] = useState(1);
 
   // Season Ticket Form
-  const [seasonFrom, setSeasonFrom] = useState('Thane (TNA)');
-  const [seasonTo, setSeasonTo] = useState('Mumbai CSMT (CSMT)');
+  const [seasonFrom, setSeasonFrom] = useState<Station | null>({
+    id: 2,
+    code: 'TNA',
+    name: 'Thane',
+    city: 'Thane',
+    state: 'Maharashtra',
+    platform_count: 10,
+  });
+  const [seasonTo, setSeasonTo] = useState<Station | null>({
+    id: 1,
+    code: 'CSMT',
+    name: 'Mumbai CSMT',
+    city: 'Mumbai',
+    state: 'Maharashtra',
+    platform_count: 18,
+  });
   const [seasonDuration, setSeasonDuration] = useState('MONTHLY');
   const [seasonClass, setSeasonClass] = useState('II');
+  const [seasonError, setSeasonError] = useState<string | null>(null);
+  const [isSwappingSeason, setIsSwappingSeason] = useState(false);
 
   const [createdTicket, setCreatedTicket] = useState<UnreservedTicket | null>(null);
   const [myTickets, setMyTickets] = useState<UnreservedTicket[]>([]);
@@ -48,15 +89,44 @@ export const UnreservedTicketing: React.FC = () => {
     fetchMyTickets();
   }, []);
 
+  const handleSwapJourney = () => {
+    if (!fromStation || !toStation) return;
+    setIsSwappingJourney(true);
+    setTimeout(() => setIsSwappingJourney(false), 300);
+    const temp = fromStation;
+    setFromStation(toStation);
+    setToStation(temp);
+    setJourneyError(null);
+  };
+
+  const handleSwapSeason = () => {
+    if (!seasonFrom || !seasonTo) return;
+    setIsSwappingSeason(true);
+    setTimeout(() => setIsSwappingSeason(false), 300);
+    const temp = seasonFrom;
+    setSeasonFrom(seasonTo);
+    setSeasonTo(temp);
+    setSeasonError(null);
+  };
+
   const handleBookJourney = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!fromStation || !toStation) {
+      setJourneyError('Please select both departure and destination stations.');
+      return;
+    }
+    if (fromStation.code === toStation.code) {
+      setJourneyError('Departure and destination stations cannot be the same.');
+      return;
+    }
+    setJourneyError(null);
     setLoading(true);
     try {
       const ticket = await apiRequest<UnreservedTicket>('/tickets/unreserved', {
         method: 'POST',
         body: JSON.stringify({
-          from_station: fromStation,
-          to_station: toStation,
+          from_station: `${fromStation.name} (${fromStation.code})`,
+          to_station: `${toStation.name} (${toStation.code})`,
           passenger_count: paxCount,
           travel_class: travelClass,
         }),
@@ -72,12 +142,16 @@ export const UnreservedTicketing: React.FC = () => {
 
   const handleBookPlatform = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!platformStation) {
+      alert('Please select a station.');
+      return;
+    }
     setLoading(true);
     try {
       const ticket = await apiRequest<UnreservedTicket>('/tickets/platform', {
         method: 'POST',
         body: JSON.stringify({
-          station: platformStation,
+          station: `${platformStation.name} (${platformStation.code})`,
           passenger_count: platformPax,
         }),
       });
@@ -92,13 +166,22 @@ export const UnreservedTicketing: React.FC = () => {
 
   const handleBookSeason = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!seasonFrom || !seasonTo) {
+      setSeasonError('Please select both source and destination stations.');
+      return;
+    }
+    if (seasonFrom.code === seasonTo.code) {
+      setSeasonError('Source and destination stations cannot be the same.');
+      return;
+    }
+    setSeasonError(null);
     setLoading(true);
     try {
       const ticket = await apiRequest<UnreservedTicket>('/tickets/season', {
         method: 'POST',
         body: JSON.stringify({
-          from_station: seasonFrom,
-          to_station: seasonTo,
+          from_station: `${seasonFrom.name} (${seasonFrom.code})`,
+          to_station: `${seasonTo.name} (${seasonTo.code})`,
           travel_class: seasonClass,
           duration_type: seasonDuration,
         }),
@@ -113,7 +196,7 @@ export const UnreservedTicketing: React.FC = () => {
   };
 
   return (
-    <div className="pb-24 pt-3 px-4 space-y-4">
+    <div className="pb-24 pt-3 px-4 space-y-4 max-w-lg mx-auto">
       <DemoNoticeBanner compact />
 
       <div>
@@ -128,17 +211,18 @@ export const UnreservedTicketing: React.FC = () => {
       {/* Simulated Geofence Range Status */}
       <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-2.5 flex items-center justify-between text-[11px] text-emerald-800">
         <div className="flex items-center gap-1.5 font-bold">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-          <span>Simulated Geofencing: Station Radius In-Range</span>
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <span>Paperless Mode Active</span>
         </div>
-        <span className="text-[10px] bg-emerald-200/60 font-black px-2 py-0.5 rounded-full">
-          GPS Active
+        <span className="text-[10px] bg-emerald-100/80 font-bold px-2 py-0.5 rounded-full">
+          GPS In-Range (Within 5 km)
         </span>
       </div>
 
-      {/* UTS Tabs */}
-      <div className="bg-slate-200/80 p-1 rounded-2xl flex text-xs font-bold">
+      {/* Tabs */}
+      <div className="flex bg-slate-100 p-1 rounded-2xl text-xs font-bold text-slate-600">
         <button
+          type="button"
           onClick={() => {
             setActiveTab('JOURNEY');
             setCreatedTicket(null);
@@ -152,6 +236,7 @@ export const UnreservedTicketing: React.FC = () => {
           Journey Ticket
         </button>
         <button
+          type="button"
           onClick={() => {
             setActiveTab('PLATFORM');
             setCreatedTicket(null);
@@ -165,6 +250,7 @@ export const UnreservedTicketing: React.FC = () => {
           Platform Ticket
         </button>
         <button
+          type="button"
           onClick={() => {
             setActiveTab('SEASON');
             setCreatedTicket(null);
@@ -181,42 +267,61 @@ export const UnreservedTicketing: React.FC = () => {
 
       {/* 1. Journey Ticket Form */}
       {activeTab === 'JOURNEY' && (
-        <form onSubmit={handleBookJourney} className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-card space-y-3">
-          <div className="space-y-2">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                From Station
-              </label>
-              <select
-                value={fromStation}
-                onChange={(e) => setFromStation(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none"
+        <form onSubmit={handleBookJourney} className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-card space-y-4">
+          <div className="relative space-y-3">
+            <StationAutocomplete
+              label="From Station"
+              placeholder="Search departure station"
+              selectedStation={fromStation}
+              onSelect={(st) => {
+                if (toStation && toStation.code === st.code) {
+                  setJourneyError('Departure and destination stations cannot be the same.');
+                } else {
+                  setJourneyError(null);
+                }
+                setFromStation(st);
+              }}
+              oppositeStation={toStation}
+              iconColor="text-emerald-600"
+            />
+
+            {/* Swap Button */}
+            <div className="flex justify-center -my-1.5 relative z-10">
+              <button
+                type="button"
+                onClick={handleSwapJourney}
+                className="bg-white border border-slate-200 text-blue-600 p-1.5 rounded-full shadow-soft hover:bg-blue-50 active:scale-95 transition-all"
+                title="Swap stations"
               >
-                <option value="Mumbai CSMT (CSMT)">Mumbai CSMT (CSMT)</option>
-                <option value="Mumbai Central (MMCT)">Mumbai Central (MMCT)</option>
-                <option value="Thane (TNA)">Thane (TNA)</option>
-                <option value="Pune Jn (PUNE)">Pune Jn (PUNE)</option>
-              </select>
+                <ArrowUpDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isSwappingJourney ? 'rotate-180' : ''}`} />
+              </button>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                To Station
-              </label>
-              <select
-                value={toStation}
-                onChange={(e) => setToStation(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none"
-              >
-                <option value="Thane (TNA)">Thane (TNA)</option>
-                <option value="Mumbai CSMT (CSMT)">Mumbai CSMT (CSMT)</option>
-                <option value="Pune Jn (PUNE)">Pune Jn (PUNE)</option>
-                <option value="Nashik Road (NK)">Nashik Road (NK)</option>
-              </select>
-            </div>
+            <StationAutocomplete
+              label="To Station"
+              placeholder="Search arrival station"
+              selectedStation={toStation}
+              onSelect={(st) => {
+                if (fromStation && fromStation.code === st.code) {
+                  setJourneyError('Departure and destination stations cannot be the same.');
+                } else {
+                  setJourneyError(null);
+                }
+                setToStation(st);
+              }}
+              oppositeStation={fromStation}
+              iconColor="text-rose-600"
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          {journeyError && (
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-800 text-[11px] font-semibold flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+              <span>{journeyError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                 Passengers
@@ -262,23 +367,14 @@ export const UnreservedTicketing: React.FC = () => {
 
       {/* 2. Platform Ticket Form */}
       {activeTab === 'PLATFORM' && (
-        <form onSubmit={handleBookPlatform} className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-card space-y-3">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Select Station
-            </label>
-            <select
-              value={platformStation}
-              onChange={(e) => setPlatformStation(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none"
-            >
-              <option value="Mumbai Central (MMCT)">Mumbai Central (MMCT)</option>
-              <option value="Mumbai CSMT (CSMT)">Mumbai CSMT (CSMT)</option>
-              <option value="New Delhi (NDLS)">New Delhi (NDLS)</option>
-              <option value="Pune Jn (PUNE)">Pune Jn (PUNE)</option>
-              <option value="KSR Bengaluru (SBC)">KSR Bengaluru (SBC)</option>
-            </select>
-          </div>
+        <form onSubmit={handleBookPlatform} className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-card space-y-4">
+          <StationAutocomplete
+            label="Select Station"
+            placeholder="Search station for platform ticket"
+            selectedStation={platformStation}
+            onSelect={(st) => setPlatformStation(st)}
+            iconColor="text-blue-600"
+          />
 
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
@@ -310,38 +406,61 @@ export const UnreservedTicketing: React.FC = () => {
 
       {/* 3. Season Pass Form */}
       {activeTab === 'SEASON' && (
-        <form onSubmit={handleBookSeason} className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-card space-y-3">
-          <div className="space-y-2">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                From Station
-              </label>
-              <select
-                value={seasonFrom}
-                onChange={(e) => setSeasonFrom(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none"
+        <form onSubmit={handleBookSeason} className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-card space-y-4">
+          <div className="relative space-y-3">
+            <StationAutocomplete
+              label="From Station"
+              placeholder="Search source station"
+              selectedStation={seasonFrom}
+              onSelect={(st) => {
+                if (seasonTo && seasonTo.code === st.code) {
+                  setSeasonError('Source and destination stations cannot be the same.');
+                } else {
+                  setSeasonError(null);
+                }
+                setSeasonFrom(st);
+              }}
+              oppositeStation={seasonTo}
+              iconColor="text-emerald-600"
+            />
+
+            {/* Swap Button */}
+            <div className="flex justify-center -my-1.5 relative z-10">
+              <button
+                type="button"
+                onClick={handleSwapSeason}
+                className="bg-white border border-slate-200 text-blue-600 p-1.5 rounded-full shadow-soft hover:bg-blue-50 active:scale-95 transition-all"
+                title="Swap stations"
               >
-                <option value="Thane (TNA)">Thane (TNA)</option>
-                <option value="Mumbai CSMT (CSMT)">Mumbai CSMT (CSMT)</option>
-              </select>
+                <ArrowUpDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isSwappingSeason ? 'rotate-180' : ''}`} />
+              </button>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                To Station
-              </label>
-              <select
-                value={seasonTo}
-                onChange={(e) => setSeasonTo(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none"
-              >
-                <option value="Mumbai CSMT (CSMT)">Mumbai CSMT (CSMT)</option>
-                <option value="Thane (TNA)">Thane (TNA)</option>
-              </select>
-            </div>
+            <StationAutocomplete
+              label="To Station"
+              placeholder="Search destination station"
+              selectedStation={seasonTo}
+              onSelect={(st) => {
+                if (seasonFrom && seasonFrom.code === st.code) {
+                  setSeasonError('Source and destination stations cannot be the same.');
+                } else {
+                  setSeasonError(null);
+                }
+                setSeasonTo(st);
+              }}
+              oppositeStation={seasonFrom}
+              iconColor="text-rose-600"
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          {seasonError && (
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-800 text-[11px] font-semibold flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+              <span>{seasonError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                 Duration

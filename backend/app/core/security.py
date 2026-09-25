@@ -18,6 +18,21 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except Exception:
         return False
 
+def get_mpin_hash(mpin: str) -> str:
+    pwd_bytes = mpin.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+def verify_mpin(plain_mpin: str, hashed_mpin: str) -> bool:
+    if not hashed_mpin:
+        return False
+    try:
+        plain_bytes = plain_mpin.encode('utf-8')[:72]
+        hashed_bytes = hashed_mpin.encode('utf-8')
+        return bcrypt.checkpw(plain_bytes, hashed_bytes)
+    except Exception:
+        return False
+
 def create_access_token(subject: Union[str, Any], expires_delta: timedelta = None) -> str:
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
