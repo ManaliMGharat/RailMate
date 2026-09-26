@@ -3,12 +3,15 @@ from pydantic import BaseModel, EmailStr
 
 class RegisterRequest(BaseModel):
     email: EmailStr
+    username: Optional[str] = None
     mobile: Optional[str] = None
     full_name: str
     password: str
+    confirm_password: Optional[str] = None
 
 class LoginRequest(BaseModel):
-    email: str
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
 
 class TokenResponse(BaseModel):

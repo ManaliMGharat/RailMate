@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -43,13 +43,20 @@ const queryClient = new QueryClient({
 const AppLayout: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(15); // Matches screenshot badge '15'
   const location = useLocation();
+  const { token } = useAuth();
 
   useEffect(() => {
-    // Attempt to read live notification count from backend
+    // Only attempt to read live notification count from backend when authenticated
+    if (!token) return;
+
     apiRequest<{ unread_count: number }>('/notifications')
-      .then((data) => setUnreadCount(data.unread_count))
+      .then((data) => {
+        if (data && typeof data.unread_count === 'number') {
+          setUnreadCount(data.unread_count);
+        }
+      })
       .catch(() => {});
-  }, [location.pathname]);
+  }, [location.pathname, token]);
 
   const isLoginPage = location.pathname === '/login';
 

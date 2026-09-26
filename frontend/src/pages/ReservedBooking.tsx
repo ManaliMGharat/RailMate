@@ -1,31 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  ArrowLeftRight,
-  Calendar,
-  Clock,
-  ChevronRight,
-  Filter,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  Train as TrainIcon,
-  MapPin,
-  Eye,
-  RotateCcw
-} from 'lucide-react';
-import { Station, Train, ClassAvailability } from '../types';
-import { apiRequest } from '../api/client';
-import { StationAutocomplete } from '../components/StationAutocomplete';
-import { DemoNoticeBanner } from '../components/DemoNoticeBanner';
 
-export const ReservedBooking: React.FC = () => {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+import { useState } from 'react';
+import { apiRequest } from '../api/client';
+
+interface Station {
+  id: number;
+  code: string;
+  name: string;
+  city: string;
+  state: string;
+  platform_count?: number;
+}
+
+interface ClassAvailability {
+  class_type: string;
+  available_seats: number;
+  total_seats?: number;
+  fare: number;
+}
+
+interface Train {
+  id: number;
+  number: string;
+  name: string;
+  train_type?: string;
+  source_station?: Station;
+  destination_station?: Station;
+  departure_time: string;
+  arrival_time: string;
+  duration?: string;
+  running_days?: string[];
+  classes?: ClassAvailability[];
+  min_fare?: number;
+}
+
+export const ReservedBooking = () => {
+  const today = new Date();
+
+  const defaultDate = new Date(today);
+  defaultDate.setDate(defaultDate.getDate() + 3);
+
+  const formatDate = (date: Date) => {
+    return date.toISOString().split('T')[0];
+  };
 
   const [fromStation, setFromStation] = useState<Station | null>({
     id: 1,
-    code: 'MMCT',
+    code: 'BCT',
     name: 'Mumbai Central',
     city: 'Mumbai',
     state: 'Maharashtra',
@@ -41,453 +61,564 @@ export const ReservedBooking: React.FC = () => {
     platform_count: 16,
   });
 
-  const getLocalDateStr = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
+  const [journeyDate, setJourneyDate] = useState(
+    formatDate(defaultDate)
+  );
 
-  const defaultDate = new Date();
-  defaultDate.setDate(defaultDate.getDate() + 3);
-  const [journeyDate, setJourneyDate] = useState(getLocalDateStr(defaultDate));
-
-  const [selectedClass, setSelectedClass] = useState<string>('ALL');
-  const [selectedQuota, setSelectedQuota] = useState<string>('General');
-  const [sortBy, setSortBy] = useState<string>('departure');
+  const [selectedQuota, setSelectedQuota] = useState('GENERAL');
+  const [selectedClass, setSelectedClass] = useState('ALL');
+  const [sortBy, setSortBy] = useState('departure');
 
   const [trains, setTrains] = useState<Train[]>([]);
+
+  const [selectedClassMap, setSelectedClassMap] = useState<
+    Record<number, ClassAvailability>
+  >({});
+
   const [loading, setLoading] = useState(false);
-  const [selectedTrain, setSelectedTrain] = useState<Train | null>(null);
-  const [selectedClassMap, setSelectedClassMap] = useState<Record<number, ClassAvailability>>({});
+  const [error, setError] = useState('');
 
-  const quotas = ['General', 'Tatkal', 'Ladies', 'Senior Citizen', 'Divyang'];
-  const classesList = ['ALL', '1A', '2A', '3A', '3E', 'SL', 'CC', 'EC', '2S'];
-  const [isSwapping, setIsSwapping] = useState(false);
-  const [stationError, setStationError] = useState<string | null>(null);
-  const [searchError, setSearchError] = useState<{
-    message: string;
-    type: 'NETWORK' | 'MISSING_URL' | 'SERVER';
-  } | null>(null);
+  const searchTrains = async () => {
+    if (!fromStation || !toStation) {
+      setError('Please select both source and destination stations.');
+      return;
+    }
 
-  const handleSwapStations = () => {
-    if (!fromStation || !toStation) return;
     if (fromStation.code === toStation.code) {
-      setStationError('Departure and arrival stations cannot be the same.');
+      setError('Source and destination stations cannot be the same.');
       return;
     }
-    setStationError(null);
-    setIsSwapping(true);
-    setTimeout(() => setIsSwapping(false), 350);
 
-    const temp = fromStation;
-    setFromStation(toStation);
-    setToStation(temp);
-  };
-
-  const handleSelectFromStation = (st: Station) => {
-    if (toStation && toStation.code === st.code) {
-      setStationError('Departure and arrival stations cannot be the same.');
-      return;
-    }
-    setStationError(null);
-    setFromStation(st);
-  };
-
-  const handleSelectToStation = (st: Station) => {
-    if (fromStation && fromStation.code === st.code) {
-      setStationError('Departure and arrival stations cannot be the same.');
-      return;
-    }
-    setStationError(null);
-    setToStation(st);
-  };
-
-  const fetchTrains = async () => {
-    if (!fromStation || !toStation) return;
-    if (fromStation.code === toStation.code) {
-      setStationError('Departure and arrival stations cannot be the same.');
-      setTrains([]);
-      return;
-    }
     setLoading(true);
-    setStationError(null);
-    setSearchError(null);
-    try {
-      const query = `/trains/search?from_station=${fromStation.code}&to_station=${toStation.code}&date=${journeyDate}&quota=${selectedQuota}&sort_by=${sortBy}${
-        selectedClass !== 'ALL' ? `&class_type=${selectedClass}` : ''
-      }`;
-      const data = await apiRequest<{ trains: Train[] }>(query);
-      setTrains(data.trains);
+    setError('');
+    setTrains([]);
+    setSelectedClassMap({});
 
-      // Pre-select first class for each train
+    try {
+      const query =
+        '/trains/search?from_station=' +
+        encodeURIComponent(fromStation.code) +
+        '&to_station=' +
+        encodeURIComponent(toStation.code) +
+        '&journey_date=' +
+        encodeURIComponent(journeyDate) +
+        '&travel_class=' +
+        encodeURIComponent(selectedClass);
+
+      console.log('Train search URL:', query);
+
+      const data = await apiRequest<Train[]>(query);
+
+      console.log('Train search response:', data);
+
+      const trainList = Array.isArray(data) ? data : [];
+
+      setTrains(trainList);
+
       const classMap: Record<number, ClassAvailability> = {};
-      data.trains.forEach((t) => {
-        if (t.classes && t.classes.length > 0) {
-          classMap[t.id] = t.classes[0];
+
+      trainList.forEach((train) => {
+        if (train.classes && train.classes.length > 0) {
+          classMap[train.id] = train.classes[0];
         }
       });
+
       setSelectedClassMap(classMap);
-    } catch (err: any) {
-      console.error('Fetch trains error:', err);
-      setTrains([]);
-      if (err.isMissingUrl || err.code === 'MISSING_API_URL') {
-        setSearchError({
-          type: 'MISSING_URL',
-          message: err.message,
-        });
-      } else if (err.isNetworkError || err.isTimeout || err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT') {
-        setSearchError({
-          type: 'NETWORK',
-          message: err.message || 'Unable to connect to the backend server. The backend may be offline or starting up from sleep.',
-        });
-      } else {
-        setSearchError({
-          type: 'SERVER',
-          message: err.message || 'Server returned an error while searching for trains.',
-        });
+
+      if (trainList.length === 0) {
+        setError(
+          'No trains found for this route and date. Try another date or station combination.'
+        );
       }
+    } catch (err: any) {
+      console.error('Train search error:', err);
+
+      let errorMessage = 'Unable to search trains. Please try again.';
+
+      if (err && err.message) {
+        errorMessage = String(err.message);
+      } else if (err && err.detail) {
+        errorMessage = String(err.detail);
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchTrains();
-  }, [fromStation?.code, toStation?.code, selectedQuota, sortBy, selectedClass, journeyDate]);
+  const swapStations = () => {
+    const oldFrom = fromStation;
 
-  const handleProceedToBooking = (train: Train) => {
-    const chosenClass = selectedClassMap[train.id] || train.classes[0];
-    if (!chosenClass) return;
+    setFromStation(toStation);
+    setToStation(oldFrom);
 
-    navigate('/passenger-details', {
-      state: {
-        train,
-        fromStation,
-        toStation,
-        journeyDate,
-        quota: selectedQuota,
-        chosenClass,
-      },
-    });
+    setTrains([]);
+    setSelectedClassMap({});
+    setError('');
+  };
+
+  const selectClass = (
+    trainId: number,
+    classInfo: ClassAvailability
+  ) => {
+    setSelectedClassMap((previous) => ({
+      ...previous,
+      [trainId]: classInfo,
+    }));
+  };
+
+  const formatTime = (time: string) => {
+    if (!time) {
+      return '--:--';
+    }
+
+    const parts = time.split(':');
+
+    if (parts.length >= 2) {
+      return parts[0] + ':' + parts[1];
+    }
+
+    return time;
+  };
+
+  const formatFare = (fare?: number) => {
+    if (fare === undefined || fare === null) {
+      return '₹--';
+    }
+
+    return '₹' + Number(fare).toLocaleString('en-IN');
   };
 
   return (
-    <div className="pb-24 pt-3 px-4 space-y-4">
-      <DemoNoticeBanner compact />
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 py-5">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Reserved Train Booking
+          </h1>
 
-      {/* Search Header Form Card */}
-      <div className="bg-white rounded-3xl p-4 shadow-card border border-slate-100 space-y-3.5">
-        <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-          <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-            <TrainIcon className="w-4 h-4 text-blue-600" />
-            Book Reserved Train
-          </h2>
-          <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-            Step 1 of 4
-          </span>
+          <p className="text-sm text-gray-500 mt-1">
+            Search and book reserved railway tickets
+          </p>
         </div>
+      </div>
 
-        {/* Stations Pickers with Swap */}
-        <div className="relative space-y-2">
-          <StationAutocomplete
-            label="From"
-            selectedStation={fromStation}
-            onSelect={handleSelectFromStation}
-            oppositeStation={toStation}
-            iconColor="text-emerald-600"
-          />
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+            <div className="lg:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                From
+              </label>
 
-          <div className="absolute right-3 top-[38px] z-10">
-            <button
-              type="button"
-              onClick={handleSwapStations}
-              className={`w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center text-slate-600 hover:text-blue-600 hover:border-blue-400 active:scale-90 transition-all ${
-                isSwapping ? 'rotate-180 scale-110 text-blue-600 border-blue-500' : ''
-              }`}
-              title="Swap From and To stations"
-              aria-label="Swap Stations"
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5 rotate-90" />
-            </button>
+              <div className="border rounded-lg px-4 py-3 bg-gray-50">
+                <div className="text-xs text-gray-500">
+                  Station
+                </div>
+
+                <div className="font-semibold text-gray-900">
+                  {fromStation?.code}
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  {fromStation?.name}
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-1 flex justify-center">
+              <button
+                type="button"
+                onClick={swapStations}
+                className="w-10 h-10 rounded-full border bg-white hover:bg-gray-50 flex items-center justify-center"
+                title="Swap stations"
+              >
+                ⇄
+              </button>
+            </div>
+
+            <div className="lg:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                To
+              </label>
+
+              <div className="border rounded-lg px-4 py-3 bg-gray-50">
+                <div className="text-xs text-gray-500">
+                  Station
+                </div>
+
+                <div className="font-semibold text-gray-900">
+                  {toStation?.code}
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  {toStation?.name}
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2">
+              <label
+                htmlFor="journey-date"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Journey Date
+              </label>
+
+              <input
+                id="journey-date"
+                type="date"
+                value={journeyDate}
+                min={formatDate(today)}
+                onChange={(event) =>
+                  setJourneyDate(event.target.value)
+                }
+                className="w-full border rounded-lg px-4 py-3 bg-white"
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              <button
+                type="button"
+                onClick={searchTrains}
+                disabled={loading}
+                className="w-full rounded-lg px-5 py-3 bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Searching...' : 'Search Trains'}
+              </button>
+            </div>
           </div>
 
-          <StationAutocomplete
-            label="To"
-            selectedStation={toStation}
-            onSelect={handleSelectToStation}
-            oppositeStation={fromStation}
-            iconColor="text-blue-600"
-          />
+          <div className="mt-5 pt-5 border-t grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label
+                htmlFor="quota"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Quota
+              </label>
+
+              <select
+                id="quota"
+                value={selectedQuota}
+                onChange={(event) =>
+                  setSelectedQuota(event.target.value)
+                }
+                className="w-full border rounded-lg px-3 py-2.5 bg-white"
+              >
+                <option value="GENERAL">General</option>
+                <option value="LADIES">Ladies</option>
+                <option value="SENIOR_CITIZEN">
+                  Senior Citizen
+                </option>
+                <option value="TATKAL">Tatkal</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="travel-class"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Class
+              </label>
+
+              <select
+                id="travel-class"
+                value={selectedClass}
+                onChange={(event) =>
+                  setSelectedClass(event.target.value)
+                }
+                className="w-full border rounded-lg px-3 py-2.5 bg-white"
+              >
+                <option value="ALL">All Classes</option>
+                <option value="1A">1A - First AC</option>
+                <option value="2A">2A - AC 2 Tier</option>
+                <option value="3A">3A - AC 3 Tier</option>
+                <option value="CC">CC - Chair Car</option>
+                <option value="SL">SL - Sleeper</option>
+                <option value="2S">2S - Second Sitting</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="sort-by"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Sort By
+              </label>
+
+              <select
+                id="sort-by"
+                value={sortBy}
+                onChange={(event) =>
+                  setSortBy(event.target.value)
+                }
+                className="w-full border rounded-lg px-3 py-2.5 bg-white"
+              >
+                <option value="departure">Departure</option>
+                <option value="arrival">Arrival</option>
+                <option value="duration">Duration</option>
+                <option value="fare">Fare</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        {stationError && (
-          <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl animate-in fade-in">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{stationError}</span>
+        <div className="mt-6">
+          <h2 className="text-xl font-bold text-gray-900">
+            {trains.length} Trains Found
+          </h2>
+
+          {fromStation && toStation && (
+            <p className="text-sm text-gray-500 mt-1">
+              {fromStation.code} → {toStation.code} •{' '}
+              {journeyDate}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+            <div className="font-semibold">
+              Search Error
+            </div>
+
+            <div className="text-sm mt-1">
+              {error}
+            </div>
           </div>
         )}
 
-        {/* Date and Quota Row */}
-        <div className="grid grid-cols-2 gap-2.5 pt-1">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Journey Date
-            </label>
-            <div className="relative">
-              <input
-                type="date"
-                value={journeyDate}
-                min={new Date().toISOString().split('T')[0]}
-                onChange={(e) => setJourneyDate(e.target.value)}
-                className="w-full pl-3 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
+        {loading && (
+          <div className="mt-6 bg-white border rounded-xl p-10 text-center">
+            <div className="text-gray-600">
+              Searching available trains...
             </div>
           </div>
+        )}
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Quota
-            </label>
-            <select
-              value={selectedQuota}
-              onChange={(e) => setSelectedQuota(e.target.value)}
-              className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            >
-              {quotas.map((q) => (
-                <option key={q} value={q}>
-                  {q}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Classes Horizontal Scroll */}
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-            Class Filter
-          </label>
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-            {classesList.map((cls) => (
-              <button
-                key={cls}
-                type="button"
-                onClick={() => setSelectedClass(cls)}
-                className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all shrink-0 ${
-                  selectedClass === cls
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
-                }`}
-              >
-                {cls}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Search Action */}
-        <button
-          onClick={fetchTrains}
-          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5"
-        >
-          <TrainIcon className="w-4 h-4" />
-          Search Available Trains
-        </button>
-      </div>
-
-      {/* Train Results List */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-bold text-slate-700">
-            {loading ? 'Searching trains...' : `${trains.length} Trains Found`}
-          </span>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-slate-400 font-medium">Sort:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="text-[11px] font-bold text-blue-700 bg-transparent border-none focus:outline-none cursor-pointer"
-            >
-              <option value="departure">Departure Time</option>
-              <option value="duration">Fastest Duration</option>
-            </select>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((n) => (
-              <div key={n} className="bg-white rounded-2xl p-4 animate-pulse space-y-3 shadow-soft border border-slate-100">
-                <div className="h-4 bg-slate-200 rounded w-1/2" />
-                <div className="h-8 bg-slate-100 rounded" />
-                <div className="h-10 bg-slate-200 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : searchError ? (
-          <div className="bg-red-50/90 border border-red-200 rounded-2xl p-6 text-center space-y-3 shadow-soft">
-            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto text-red-600">
-              <AlertCircle className="w-6 h-6" />
+        {!loading && trains.length === 0 && !error && (
+          <div className="mt-6 bg-white border rounded-xl p-10 text-center">
+            <div className="text-4xl mb-3">
+              🚆
             </div>
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-red-900 uppercase tracking-wider">
-                {searchError.type === 'MISSING_URL' ? 'Configuration Notice' : searchError.type === 'NETWORK' ? 'Connection Error' : 'Search Error'}
-              </p>
-              <p className="text-xs text-red-700 max-w-sm mx-auto leading-relaxed">
-                {searchError.message}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={fetchTrains}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition shadow-sm active:scale-95"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Retry Search
-            </button>
-          </div>
-        ) : trains.length === 0 ? (
-          <div className="bg-white rounded-2xl p-8 text-center space-y-2 border border-slate-100 shadow-soft">
-            <TrainIcon className="w-10 h-10 text-slate-300 mx-auto" />
-            <p className="text-xs font-bold text-slate-700">No direct trains found</p>
-            <p className="text-[11px] text-slate-400">
-              Try searching with another date or station combination like MMCT to PUNE or MMCT to NDLS.
+
+            <h3 className="text-lg font-semibold text-gray-900">
+              Search for trains
+            </h3>
+
+            <p className="text-gray-500 mt-1">
+              Select your journey details and click Search
+              Trains.
             </p>
           </div>
-        ) : (
-          trains.map((train) => {
-            const currentSelectedClass = selectedClassMap[train.id] || train.classes[0];
+        )}
 
-            return (
-              <div
-                key={train.id}
-                className="bg-white rounded-2xl border border-slate-200/80 shadow-soft hover:shadow-card transition-all p-3.5 space-y-3"
-              >
-                {/* Train Header */}
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-blue-700 tracking-tight">
-                        {train.number}
-                      </span>
-                      <span className="text-xs font-extrabold text-slate-800">
-                        {train.name}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-semibold text-slate-400 block mt-0.5">
-                      Runs: Daily (M T W T F S S) • {train.train_type}
-                    </span>
-                  </div>
+        {!loading && trains.length > 0 && (
+          <div className="mt-6 space-y-4">
+            {trains.map((train) => {
+              const selectedClassInfo =
+                selectedClassMap[train.id];
 
-                  <button
-                    onClick={() => navigate(`/train-schedule/${train.number}`)}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-0.5 bg-blue-50 px-2 py-1 rounded-lg transition-colors"
-                  >
-                    <Eye className="w-3 h-3" />
-                    Route
-                  </button>
-                </div>
-
-                {/* Timetable overview */}
-                <div className="bg-slate-50 rounded-xl p-2.5 flex items-center justify-between text-center">
-                  <div className="text-left">
-                    <span className="text-sm font-extrabold text-slate-900 block">
-                      {train.departure_time}
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                      {fromStation?.code || train.source_station.code}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col items-center">
-                    <span className="text-[10px] font-semibold text-slate-400">
-                      {train.duration_hours} hrs
-                    </span>
-                    <div className="w-20 h-0.5 bg-slate-300 relative my-1">
-                      <div className="w-1.5 h-1.5 bg-blue-600 rounded-full absolute -top-0.5 right-0" />
-                    </div>
-                    <span className="text-[9px] text-emerald-600 font-bold">Direct Express</span>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-sm font-extrabold text-slate-900 block">
-                      {train.arrival_time}
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                      {toStation?.code || train.destination_station.code}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Class Availability Chips */}
-                <div className="grid grid-cols-4 gap-1.5">
-                  {train.classes.map((cls) => {
-                    const isSelected = currentSelectedClass?.class_code === cls.class_code;
-                    return (
-                      <button
-                        key={cls.class_code}
-                        type="button"
-                        onClick={() =>
-                          setSelectedClassMap((prev) => ({ ...prev, [train.id]: cls }))
-                        }
-                        className={`p-2 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? 'border-blue-600 bg-blue-50/70 ring-1 ring-blue-600 shadow-sm'
-                            : 'border-slate-200 bg-white hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-slate-900">
-                            {cls.class_code}
+              return (
+                <div
+                  key={train.id}
+                  className="bg-white border rounded-xl shadow-sm overflow-hidden"
+                >
+                  <div className="p-5">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg font-bold text-gray-900">
+                            {train.number}
                           </span>
-                          <span className="text-[10px] font-extrabold text-slate-700">
-                            ₹{cls.fare}
+
+                          <span className="text-lg font-semibold text-gray-800">
+                            {train.name}
                           </span>
                         </div>
-                        <span
-                          className={`text-[10px] font-bold block mt-1 leading-tight ${
-                            cls.status_type === 'AVAILABLE'
-                              ? 'text-emerald-600'
-                              : cls.status_type === 'RAC'
-                              ? 'text-amber-600'
-                              : 'text-red-500'
-                          }`}
-                        >
-                          {cls.status}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
 
-                {/* Selected Class Info & Book Action */}
-                {currentSelectedClass && (
-                  <div className="pt-1 flex items-center justify-between border-t border-slate-100">
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">
-                        Selected: {currentSelectedClass.class_name} ({currentSelectedClass.class_code})
-                      </span>
-                      <span className="text-xs font-extrabold text-slate-900">
-                        Fare: ₹{currentSelectedClass.fare} + taxes
-                      </span>
+                        {train.train_type && (
+                          <div className="text-sm text-gray-500 mt-1">
+                            {train.train_type}
+                          </div>
+                        )}
+                      </div>
+
+                      {train.min_fare !== undefined && (
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500">
+                            Starting from
+                          </div>
+
+                          <div className="text-xl font-bold text-gray-900">
+                            {formatFare(train.min_fare)}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    <button
-                      onClick={() => handleProceedToBooking(train)}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1"
-                    >
-                      <span>Book Now</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-5 items-center">
+                      <div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          {formatTime(
+                            train.departure_time
+                          )}
+                        </div>
+
+                        <div className="text-sm font-semibold text-gray-700">
+                          {train.source_station?.code ||
+                            fromStation?.code ||
+                            'SOURCE'}
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          {train.source_station?.name ||
+                            fromStation?.name ||
+                            ''}
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-sm text-gray-500">
+                          {train.duration || 'Journey'}
+                        </div>
+
+                        <div className="my-2 text-gray-400">
+                          ────────▶
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          Direct Train
+                        </div>
+                      </div>
+
+                      <div className="md:text-right">
+                        <div className="text-2xl font-bold text-gray-900">
+                          {formatTime(
+                            train.arrival_time
+                          )}
+                        </div>
+
+                        <div className="text-sm font-semibold text-gray-700">
+                          {train.destination_station?.code ||
+                            toStation?.code ||
+                            'DESTINATION'}
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          {train.destination_station?.name ||
+                            toStation?.name ||
+                            ''}
+                        </div>
+                      </div>
+                    </div>
+
+                    {train.classes &&
+                      train.classes.length > 0 && (
+                        <div className="mt-6 pt-5 border-t">
+                          <div className="text-sm font-semibold text-gray-800 mb-3">
+                            Available Classes
+                          </div>
+
+                          <div className="flex flex-wrap gap-3">
+                            {train.classes.map(
+                              (classInfo) => {
+                                const isSelected =
+                                  selectedClassInfo?.class_type ===
+                                  classInfo.class_type;
+
+                                return (
+                                  <button
+                                    key={
+                                      train.id +
+                                      '-' +
+                                      classInfo.class_type
+                                    }
+                                    type="button"
+                                    onClick={() =>
+                                      selectClass(
+                                        train.id,
+                                        classInfo
+                                      )
+                                    }
+                                    className={
+                                      isSelected
+                                        ? 'border border-blue-600 bg-blue-50 rounded-lg px-4 py-3 text-left'
+                                        : 'border border-gray-200 bg-white hover:border-blue-300 rounded-lg px-4 py-3 text-left'
+                                    }
+                                  >
+                                    <div className="font-semibold text-gray-900">
+                                      {
+                                        classInfo.class_type
+                                      }
+                                    </div>
+
+                                    <div className="text-sm text-gray-600">
+                                      {
+                                        classInfo.available_seats
+                                      }{' '}
+                                      seats
+                                    </div>
+
+                                    <div className="text-sm font-semibold text-gray-900 mt-1">
+                                      {formatFare(
+                                        classInfo.fare
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              }
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="text-sm text-gray-600">
+                        {selectedClassInfo ? (
+                          <>
+                            Selected:{' '}
+                            <span className="font-semibold text-gray-900">
+                              {
+                                selectedClassInfo.class_type
+                              }
+                            </span>{' '}
+                            •{' '}
+                            <span className="font-semibold text-gray-900">
+                              {formatFare(
+                                selectedClassInfo.fare
+                              )}
+                            </span>
+                          </>
+                        ) : (
+                          'Select a class to continue'
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!selectedClassInfo}
+                        className="px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Continue to Booking
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
   );
 };
+
+export default ReservedBooking;
+

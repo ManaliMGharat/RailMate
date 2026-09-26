@@ -43,12 +43,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const profile = await apiRequest<User>('/users/me');
       setUser(profile);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to load profile with stored token', err);
-      localStorage.removeItem('railone_token');
-      localStorage.removeItem('railmate_token');
-      setToken(null);
-      setUser(null);
+      // ONLY clear tokens if the server explicitly returns 401 Unauthorized.
+      // Never wipe tokens on network errors, timeouts, or backend spin-up delays.
+      if (err?.status === 401) {
+        localStorage.removeItem('railone_token');
+        localStorage.removeItem('railmate_token');
+        setToken(null);
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -56,15 +60,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const autoLoginDemo = async () => {
     try {
-      const res = await apiRequest<{ access_token: string; user: User }>('/auth/login', {
+      const res = await apiRequest<{ access_token: string; user?: User }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email: 'demo@railone.com', password: 'password123' }),
+        body: JSON.stringify({ email: 'demo@railone.com', username: 'demo@railone.com', password: 'password123' }),
       });
-      localStorage.setItem('railone_token', res.access_token);
-      localStorage.setItem('railmate_token', res.access_token);
-      setToken(res.access_token);
-      const profile = await apiRequest<User>('/users/me');
-      setUser(profile);
+      if (res?.access_token) {
+        localStorage.setItem('railone_token', res.access_token);
+        localStorage.setItem('railmate_token', res.access_token);
+        setToken(res.access_token);
+        if (res.user) {
+          setUser(res.user);
+        }
+        const profile = await apiRequest<User>('/users/me', {
+          headers: { Authorization: `Bearer ${res.access_token}` },
+        });
+        if (profile) setUser(profile);
+      }
     } catch (e) {
       console.error('Auto login demo failed', e);
       setUser(null);
@@ -85,29 +96,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, pass: string) => {
-    const res = await apiRequest<{ access_token: string; user: User }>('/auth/login', {
+    const trimmedEmail = email.trim();
+    const res = await apiRequest<{ access_token: string; user?: User }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password: pass }),
+      body: JSON.stringify({ email: trimmedEmail, username: trimmedEmail, password: pass }),
     });
+    if (!res || !res.access_token) {
+      throw new Error('Authentication failed: No access token received from server');
+    }
     localStorage.removeItem('railone_logged_out');
     localStorage.setItem('railone_token', res.access_token);
     localStorage.setItem('railmate_token', res.access_token);
     setToken(res.access_token);
-    const profile = await apiRequest<User>('/users/me');
-    setUser(profile);
+    if (res.user) {
+      setUser(res.user);
+    }
+    try {
+      const profile = await apiRequest<User>('/users/me', {
+        headers: { Authorization: `Bearer ${res.access_token}` },
+      });
+      if (profile) setUser(profile);
+    } catch (err) {
+      console.warn('Could not fetch updated /users/me after login', err);
+    }
   };
 
   const loginWithMPIN = async (mpin: string, emailOrMobile: string = 'demo@railone.com') => {
-    const res = await apiRequest<{ access_token: string; user: User }>('/auth/mpin/verify', {
+    const res = await apiRequest<{ access_token: string; user?: User }>('/auth/mpin/verify', {
       method: 'POST',
-      body: JSON.stringify({ mpin, email_or_mobile: emailOrMobile }),
+      body: JSON.stringify({ mpin, email_or_mobile: emailOrMobile.trim() }),
     });
+    if (!res || !res.access_token) {
+      throw new Error('mPIN verification failed: No access token received from server');
+    }
     localStorage.removeItem('railone_logged_out');
     localStorage.setItem('railone_token', res.access_token);
     localStorage.setItem('railmate_token', res.access_token);
     setToken(res.access_token);
-    const profile = await apiRequest<User>('/users/me');
-    setUser(profile);
+    if (res.user) {
+      setUser(res.user);
+    }
+    try {
+      const profile = await apiRequest<User>('/users/me', {
+        headers: { Authorization: `Bearer ${res.access_token}` },
+      });
+      if (profile) setUser(profile);
+    } catch (err) {
+      console.warn('Could not fetch updated /users/me after mPIN login', err);
+    }
   };
 
   const loginWithBiometric = async (
@@ -117,34 +153,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clientDataJSON?: string,
     signature?: string
   ) => {
-    const res = await apiRequest<{ access_token: string; user: User }>('/auth/biometric/login-verify', {
+    const res = await apiRequest<{ access_token: string; user?: User }>('/auth/biometric/login-verify', {
       method: 'POST',
       body: JSON.stringify({
         credential_id: credentialId,
-        email_or_mobile: emailOrMobile,
+        email_or_mobile: emailOrMobile.trim(),
         authenticator_data: authenticatorData,
         client_data_json: clientDataJSON,
         signature: signature,
       }),
     });
+    if (!res || !res.access_token) {
+      throw new Error('Biometric authentication failed: No access token received from server');
+    }
     localStorage.removeItem('railone_logged_out');
     localStorage.setItem('railone_token', res.access_token);
     localStorage.setItem('railmate_token', res.access_token);
     setToken(res.access_token);
-    const profile = await apiRequest<User>('/users/me');
-    setUser(profile);
+    if (res.user) {
+      setUser(res.user);
+    }
+    try {
+      const profile = await apiRequest<User>('/users/me', {
+        headers: { Authorization: `Bearer ${res.access_token}` },
+      });
+      if (profile) setUser(profile);
+    } catch (err) {
+      console.warn('Could not fetch updated /users/me after biometric login', err);
+    }
   };
 
   const register = async (name: string, email: string, mobile: string, pass: string): Promise<User> => {
-    const res = await apiRequest<{ access_token: string; user: User }>('/auth/register', {
+    const trimmedEmail = email.trim();
+    const res = await apiRequest<{ access_token: string; user?: User }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ full_name: name, email, mobile, password: pass }),
+      body: JSON.stringify({
+        full_name: name.trim(),
+        email: trimmedEmail,
+        username: trimmedEmail,
+        mobile: mobile.trim(),
+        password: pass,
+        confirm_password: pass,
+      }),
     });
-    localStorage.removeItem('railone_logged_out');
-    localStorage.setItem('railone_token', res.access_token);
-    localStorage.setItem('railmate_token', res.access_token);
-    setToken(res.access_token);
-    const profile = await apiRequest<User>('/users/me');
+    if (res?.access_token) {
+      localStorage.removeItem('railone_logged_out');
+      localStorage.setItem('railone_token', res.access_token);
+      localStorage.setItem('railmate_token', res.access_token);
+      setToken(res.access_token);
+    }
+    if (res?.user) {
+      setUser(res.user);
+      return res.user;
+    }
+    const profile = await apiRequest<User>('/users/me', {
+      headers: res?.access_token ? { Authorization: `Bearer ${res.access_token}` } : undefined,
+    });
     setUser(profile);
     return profile;
   };
