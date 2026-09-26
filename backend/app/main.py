@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,21 +9,32 @@ from app.routers import (
     tickets, food, support, refunds, wallet, notifications, admin
 )
 
-# Ensure database tables exist
-Base.metadata.create_all(bind=engine)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure database tables exist
+    Base.metadata.create_all(bind=engine)
+    # Safe automatic seed for production (Render / Docker / SQLite / Postgres)
+    try:
+        from app.seed.seed_data import seed_if_empty
+        seed_if_empty()
+    except Exception as e:
+        print(f"Startup safe seed warning: {e}")
+    yield
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="RailOne - Mobile-first Railway Journey Super-App REST API"
+    description="RailOne - Mobile-first Railway Journey Super-App REST API",
+    lifespan=lifespan
 )
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=settings.get_cors_origins(),
+    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -77,5 +89,10 @@ def root():
     }
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "service": "railone-backend"}
+    return {
+        "status": "healthy",
+        "service": "railone-backend",
+        "database": "connected"
+    }

@@ -11,7 +11,8 @@ import {
   HelpCircle,
   Train as TrainIcon,
   MapPin,
-  Eye
+  Eye,
+  RotateCcw
 } from 'lucide-react';
 import { Station, Train, ClassAvailability } from '../types';
 import { apiRequest } from '../api/client';
@@ -64,6 +65,10 @@ export const ReservedBooking: React.FC = () => {
   const classesList = ['ALL', '1A', '2A', '3A', '3E', 'SL', 'CC', 'EC', '2S'];
   const [isSwapping, setIsSwapping] = useState(false);
   const [stationError, setStationError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<{
+    message: string;
+    type: 'NETWORK' | 'MISSING_URL' | 'SERVER';
+  } | null>(null);
 
   const handleSwapStations = () => {
     if (!fromStation || !toStation) return;
@@ -107,6 +112,7 @@ export const ReservedBooking: React.FC = () => {
     }
     setLoading(true);
     setStationError(null);
+    setSearchError(null);
     try {
       const query = `/trains/search?from_station=${fromStation.code}&to_station=${toStation.code}&date=${journeyDate}&quota=${selectedQuota}&sort_by=${sortBy}${
         selectedClass !== 'ALL' ? `&class_type=${selectedClass}` : ''
@@ -122,9 +128,25 @@ export const ReservedBooking: React.FC = () => {
         }
       });
       setSelectedClassMap(classMap);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Fetch trains error:', err);
       setTrains([]);
+      if (err.isMissingUrl || err.code === 'MISSING_API_URL') {
+        setSearchError({
+          type: 'MISSING_URL',
+          message: err.message,
+        });
+      } else if (err.isNetworkError || err.isTimeout || err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT') {
+        setSearchError({
+          type: 'NETWORK',
+          message: err.message || 'Unable to connect to the backend server. The backend may be offline or starting up from sleep.',
+        });
+      } else {
+        setSearchError({
+          type: 'SERVER',
+          message: err.message || 'Server returned an error while searching for trains.',
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -304,12 +326,34 @@ export const ReservedBooking: React.FC = () => {
               </div>
             ))}
           </div>
+        ) : searchError ? (
+          <div className="bg-red-50/90 border border-red-200 rounded-2xl p-6 text-center space-y-3 shadow-soft">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto text-red-600">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-red-900 uppercase tracking-wider">
+                {searchError.type === 'MISSING_URL' ? 'Configuration Notice' : searchError.type === 'NETWORK' ? 'Connection Error' : 'Search Error'}
+              </p>
+              <p className="text-xs text-red-700 max-w-sm mx-auto leading-relaxed">
+                {searchError.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={fetchTrains}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition shadow-sm active:scale-95"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Retry Search
+            </button>
+          </div>
         ) : trains.length === 0 ? (
           <div className="bg-white rounded-2xl p-8 text-center space-y-2 border border-slate-100 shadow-soft">
             <TrainIcon className="w-10 h-10 text-slate-300 mx-auto" />
             <p className="text-xs font-bold text-slate-700">No direct trains found</p>
             <p className="text-[11px] text-slate-400">
-              Try searching with another date or station combination like MMCT to NDLS.
+              Try searching with another date or station combination like MMCT to PUNE or MMCT to NDLS.
             </p>
           </div>
         ) : (

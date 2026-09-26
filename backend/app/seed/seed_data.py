@@ -13,11 +13,12 @@ from app.models import (
     ComplaintAttachment, Refund, Wallet, WalletTransaction, Notification
 )
 
-def seed():
-    try:
-        Base.metadata.drop_all(bind=engine)
-    except Exception as e:
-        print(f"Resetting tables: {e}")
+def seed(reset: bool = True):
+    if reset:
+        try:
+            Base.metadata.drop_all(bind=engine)
+        except Exception as e:
+            print(f"Resetting tables: {e}")
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
@@ -25,8 +26,9 @@ def seed():
     csv_stations, stats = load_and_validate_csv_stations()
     print(f"Loaded {stats['imported']} valid stations from CSV (Duplicates: {stats['duplicates']}, Rejected: {stats['rejected']})")
 
-    stations = {}
-    seen_codes = set()
+    existing_stations = {s.code: s for s in db.query(Station).all()}
+    stations = dict(existing_stations)
+    seen_codes = set(existing_stations.keys())
 
     # 1. Seed from CSV (official 50 records)
     for s in csv_stations:
@@ -137,81 +139,89 @@ def seed():
     print(f"Total seeded stations: {len(stations)} ({stats['imported']} from CSV + {len(stations) - stats['imported']} routes/suburban/intermediate stops).")
 
     print("Seeding Users...")
-    # Demo User matching screenshot name: Manali Manish Gharat
-    demo_user = User(
-        email="demo@railmate.com",
-        mobile="+919876543210",
-        full_name="Manali Manish Gharat",
-        hashed_password=get_password_hash("password123"),
-        hashed_mpin=get_mpin_hash("123456"),
-        mpin_enabled=True,
-        mpin_failed_attempts=0,
-        biometric_enabled=False,
-        is_phone_verified=True,
-        role="user",
-        dob="1995-08-14",
-        gender="Female",
-        address="Bandra West, Mumbai, Maharashtra 400050",
-        profile_completion=85,
-        is_active=True
-    )
-    db.add(demo_user)
+    existing_users = {u.email: u for u in db.query(User).all()}
 
-    demo_railone = User(
-        email="demo@railone.com",
-        mobile="+919876543211",
-        full_name="Manali Manish Gharat",
-        hashed_password=get_password_hash("password123"),
-        hashed_mpin=get_mpin_hash("123456"),
-        mpin_enabled=True,
-        mpin_failed_attempts=0,
-        biometric_enabled=False,
-        is_phone_verified=True,
-        role="user",
-        dob="1995-08-14",
-        gender="Female",
-        address="Bandra West, Mumbai, Maharashtra 400050",
-        profile_completion=85,
-        is_active=True
-    )
-    db.add(demo_railone)
-    db.flush()
+    demo_user = existing_users.get("demo@railmate.com")
+    if not demo_user:
+        demo_user = User(
+            email="demo@railmate.com",
+            mobile="+919876543210",
+            full_name="Manali Manish Gharat",
+            hashed_password=get_password_hash("password123"),
+            hashed_mpin=get_mpin_hash("123456"),
+            mpin_enabled=True,
+            mpin_failed_attempts=0,
+            biometric_enabled=False,
+            is_phone_verified=True,
+            role="user",
+            dob="1995-08-14",
+            gender="Female",
+            address="Bandra West, Mumbai, Maharashtra 400050",
+            profile_completion=85,
+            is_active=True
+        )
+        db.add(demo_user)
+        db.flush()
 
-    admin_user = User(
-        email="admin@railmate.com",
-        mobile="+919998887770",
-        full_name="RailOne Admin",
-        hashed_password=get_password_hash("adminpassword123"),
-        role="admin",
-        is_phone_verified=True,
-        dob="1988-04-12",
-        gender="Male",
-        address="Railway Bhavan, New Delhi 110001",
-        profile_completion=100,
-        is_active=True
-    )
-    db.add(admin_user)
-    db.flush()
+        # Pre-add saved passengers for demo user
+        passengers = [
+            Passenger(user_id=demo_user.id, name="Manali Gharat", age=29, gender="Female", berth_preference="Lower", id_type="Aadhaar", id_number="XXXX-XXXX-4512", meal_preference="Veg"),
+            Passenger(user_id=demo_user.id, name="Manish Gharat", age=32, gender="Male", berth_preference="Side Lower", id_type="Aadhaar", id_number="XXXX-XXXX-8901", meal_preference="Non-Veg"),
+            Passenger(user_id=demo_user.id, name="Aarav Gharat", age=5, gender="Male", berth_preference="No Preference", id_type="None", id_number="", meal_preference="Veg")
+        ]
+        db.add_all(passengers)
+        db.flush()
 
-    # Pre-add saved passengers for demo user
-    passengers = [
-        Passenger(user_id=demo_user.id, name="Manali Gharat", age=29, gender="Female", berth_preference="Lower", id_type="Aadhaar", id_number="XXXX-XXXX-4512", meal_preference="Veg"),
-        Passenger(user_id=demo_user.id, name="Manish Gharat", age=32, gender="Male", berth_preference="Side Lower", id_type="Aadhaar", id_number="XXXX-XXXX-8901", meal_preference="Non-Veg"),
-        Passenger(user_id=demo_user.id, name="Aarav Gharat", age=5, gender="Male", berth_preference="No Preference", id_type="None", id_number="", meal_preference="Veg")
-    ]
-    db.add_all(passengers)
-    db.flush()
+        # R-Wallet setup with initial balance
+        demo_wallet = Wallet(user_id=demo_user.id, balance=2500.0)
+        db.add(demo_wallet)
+        db.flush()
 
-    # R-Wallet setup with initial balance
-    demo_wallet = Wallet(user_id=demo_user.id, balance=2500.0)
-    db.add(demo_wallet)
-    db.flush()
+        transactions = [
+            WalletTransaction(wallet_id=demo_wallet.id, user_id=demo_user.id, transaction_type="CREDIT", amount=3000.0, reference="TXN-INIT-901", description="Initial Wallet Top-up (UPI)"),
+            WalletTransaction(wallet_id=demo_wallet.id, user_id=demo_user.id, transaction_type="DEBIT", amount=500.0, reference="TXN-DEB-102", description="Platform Tickets & Refreshments"),
+        ]
+        db.add_all(transactions)
 
-    transactions = [
-        WalletTransaction(wallet_id=demo_wallet.id, user_id=demo_user.id, transaction_type="CREDIT", amount=3000.0, reference="TXN-INIT-901", description="Initial Wallet Top-up (UPI)"),
-        WalletTransaction(wallet_id=demo_wallet.id, user_id=demo_user.id, transaction_type="DEBIT", amount=500.0, reference="TXN-DEB-102", description="Platform Tickets & Refreshments"),
-    ]
-    db.add_all(transactions)
+    demo_railone = existing_users.get("demo@railone.com")
+    if not demo_railone:
+        demo_railone = User(
+            email="demo@railone.com",
+            mobile="+919876543211",
+            full_name="Manali Manish Gharat",
+            hashed_password=get_password_hash("password123"),
+            hashed_mpin=get_mpin_hash("123456"),
+            mpin_enabled=True,
+            mpin_failed_attempts=0,
+            biometric_enabled=False,
+            is_phone_verified=True,
+            role="user",
+            dob="1995-08-14",
+            gender="Female",
+            address="Bandra West, Mumbai, Maharashtra 400050",
+            profile_completion=85,
+            is_active=True
+        )
+        db.add(demo_railone)
+        db.flush()
+
+    admin_user = existing_users.get("admin@railmate.com")
+    if not admin_user:
+        admin_user = User(
+            email="admin@railmate.com",
+            mobile="+919998887770",
+            full_name="RailOne Admin",
+            hashed_password=get_password_hash("adminpassword123"),
+            role="admin",
+            is_phone_verified=True,
+            dob="1988-04-12",
+            gender="Male",
+            address="Railway Bhavan, New Delhi 110001",
+            profile_completion=100,
+            is_active=True
+        )
+        db.add(admin_user)
+        db.flush()
 
     print("Seeding 32 Trains & Schedules...")
     trains_spec = [
@@ -367,8 +377,13 @@ def seed():
 
     berth_types = ["Lower", "Middle", "Upper", "Lower", "Middle", "Upper", "Side Lower", "Side Upper"]
 
+    existing_trains = {t.number: t for t in db.query(Train).all()}
     created_trains = []
     for num, name, ttype, src, dst, dep, arr, dur, days, classes, stops in trains_spec:
+        if num in existing_trains:
+            created_trains.append(existing_trains[num])
+            continue
+
         src_station = stations.get(src)
         dst_station = stations.get(dst)
         if not src_station or not dst_station:
@@ -437,118 +452,120 @@ def seed():
 
     db.flush()
 
-    print("Seeding Sample Bookings & Payments...")
-    sample_booking = Booking(
-        booking_ref="BK-789124",
-        user_id=demo_user.id,
-        train_id=created_trains[0].id, # Mumbai Rajdhani
-        from_station_id=stations["MMCT"].id,
-        to_station_id=stations["NDLS"].id,
-        journey_date=(datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d"),
-        travel_class="3A",
-        quota="General",
-        status="CONFIRMED",
-        pnr_number="8421098451",
-        base_fare=2280.0,
-        taxes=75.0,
-        total_amount=2355.0,
-        qr_code="RAILONE:PNR:8421098451:MMCT:NDLS:3A:CONFIRMED"
-    )
-    db.add(sample_booking)
-    db.flush()
+    if db.query(Booking).count() == 0 and len(created_trains) > 6:
+        print("Seeding Sample Bookings & Payments...")
+        sample_booking = Booking(
+            booking_ref="BK-789124",
+            user_id=demo_user.id,
+            train_id=created_trains[0].id, # Mumbai Rajdhani
+            from_station_id=stations["MMCT"].id,
+            to_station_id=stations["NDLS"].id,
+            journey_date=(datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d"),
+            travel_class="3A",
+            quota="General",
+            status="CONFIRMED",
+            pnr_number="8421098451",
+            base_fare=2280.0,
+            taxes=75.0,
+            total_amount=2355.0,
+            qr_code="RAILONE:PNR:8421098451:MMCT:NDLS:3A:CONFIRMED"
+        )
+        db.add(sample_booking)
+        db.flush()
 
-    bp1 = BookingPassenger(
-        booking_id=sample_booking.id,
-        name="Manali Manish Gharat",
-        age=29,
-        gender="Female",
-        berth_preference="Lower",
-        allocated_coach="B2",
-        allocated_seat=45,
-        allocated_berth_type="Lower",
-        status="CNF"
-    )
-    bp2 = BookingPassenger(
-        booking_id=sample_booking.id,
-        name="Manish Gharat",
-        age=32,
-        gender="Male",
-        berth_preference="Side Lower",
-        allocated_coach="B2",
-        allocated_seat=46,
-        allocated_berth_type="Middle",
-        status="CNF"
-    )
-    db.add_all([bp1, bp2])
+        bp1 = BookingPassenger(
+            booking_id=sample_booking.id,
+            name="Manali Manish Gharat",
+            age=29,
+            gender="Female",
+            berth_preference="Lower",
+            allocated_coach="B2",
+            allocated_seat=45,
+            allocated_berth_type="Lower",
+            status="CNF"
+        )
+        bp2 = BookingPassenger(
+            booking_id=sample_booking.id,
+            name="Manish Gharat",
+            age=32,
+            gender="Male",
+            berth_preference="Side Lower",
+            allocated_coach="B2",
+            allocated_seat=46,
+            allocated_berth_type="Middle",
+            status="CNF"
+        )
+        db.add_all([bp1, bp2])
 
-    payment = Payment(
-        booking_id=sample_booking.id,
-        user_id=demo_user.id,
-        amount=2355.0,
-        payment_method="UPI",
-        transaction_ref="TXN-UPI-98421045",
-        status="SUCCESS"
-    )
-    db.add(payment)
+        payment = Payment(
+            booking_id=sample_booking.id,
+            user_id=demo_user.id,
+            amount=2355.0,
+            payment_method="UPI",
+            transaction_ref="TXN-UPI-98421045",
+            status="SUCCESS"
+        )
+        db.add(payment)
 
-    # 2nd completed booking
-    past_booking = Booking(
-        booking_ref="BK-102941",
-        user_id=demo_user.id,
-        train_id=created_trains[4].id, # Deccan Queen
-        from_station_id=stations["CSMT"].id,
-        to_station_id=stations["PUNE"].id,
-        journey_date=(datetime.now() - timedelta(days=12)).strftime("%Y-%m-%d"),
-        travel_class="CC",
-        quota="General",
-        status="COMPLETED",
-        pnr_number="4521098420",
-        base_fare=390.0,
-        taxes=30.0,
-        total_amount=420.0,
-        qr_code="RAILONE:PNR:4521098420:CSMT:PUNE:CC:COMPLETED"
-    )
-    db.add(past_booking)
-    db.flush()
-    bp3 = BookingPassenger(booking_id=past_booking.id, name="Manali Manish Gharat", age=29, gender="Female", berth_preference="Window", allocated_coach="C1", allocated_seat=14, allocated_berth_type="Window", status="CNF")
-    db.add(bp3)
+        # 2nd completed booking
+        past_booking = Booking(
+            booking_ref="BK-102941",
+            user_id=demo_user.id,
+            train_id=created_trains[4].id, # Deccan Queen
+            from_station_id=stations["CSMT"].id,
+            to_station_id=stations["PUNE"].id,
+            journey_date=(datetime.now() - timedelta(days=12)).strftime("%Y-%m-%d"),
+            travel_class="CC",
+            quota="General",
+            status="COMPLETED",
+            pnr_number="4521098420",
+            base_fare=390.0,
+            taxes=30.0,
+            total_amount=420.0,
+            qr_code="RAILONE:PNR:4521098420:CSMT:PUNE:CC:COMPLETED"
+        )
+        db.add(past_booking)
+        db.flush()
+        bp3 = BookingPassenger(booking_id=past_booking.id, name="Manali Manish Gharat", age=29, gender="Female", berth_preference="Window", allocated_coach="C1", allocated_seat=14, allocated_berth_type="Window", status="CNF")
+        db.add(bp3)
 
-    # 3rd cancelled booking
-    cancelled_booking = Booking(
-        booking_ref="BK-304918",
-        user_id=demo_user.id,
-        train_id=created_trains[6].id, # Mumbai - Ahmedabad Shatabdi
-        from_station_id=stations["MMCT"].id,
-        to_station_id=stations["ADI"].id,
-        journey_date=(datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d"),
-        travel_class="CC",
-        quota="General",
-        status="CANCELLED",
-        pnr_number="6521908412",
-        base_fare=920.0,
-        taxes=45.0,
-        total_amount=965.0,
-        qr_code="RAILONE:PNR:6521908412:MMCT:ADI:CC:CANCELLED"
-    )
-    db.add(cancelled_booking)
-    db.flush()
-    bp4 = BookingPassenger(booking_id=cancelled_booking.id, name="Manish Gharat", age=32, gender="Male", berth_preference="Aisle", allocated_coach="C3", allocated_seat=22, allocated_berth_type="Aisle", status="CAN")
-    db.add(bp4)
+        # 3rd cancelled booking
+        cancelled_booking = Booking(
+            booking_ref="BK-304918",
+            user_id=demo_user.id,
+            train_id=created_trains[6].id, # Mumbai - Ahmedabad Shatabdi
+            from_station_id=stations["MMCT"].id,
+            to_station_id=stations["ADI"].id,
+            journey_date=(datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d"),
+            travel_class="CC",
+            quota="General",
+            status="CANCELLED",
+            pnr_number="6521908412",
+            base_fare=920.0,
+            taxes=45.0,
+            total_amount=965.0,
+            qr_code="RAILONE:PNR:6521908412:MMCT:ADI:CC:CANCELLED"
+        )
+        db.add(cancelled_booking)
+        db.flush()
+        bp4 = BookingPassenger(booking_id=cancelled_booking.id, name="Manish Gharat", age=32, gender="Male", berth_preference="Aisle", allocated_coach="C3", allocated_seat=22, allocated_berth_type="Aisle", status="CAN")
+        db.add(bp4)
 
-    # Pre-add Refund for cancelled booking
-    demo_refund = Refund(
-        refund_ref="RF-849102",
-        booking_id=cancelled_booking.id,
-        user_id=demo_user.id,
-        original_amount=965.0,
-        cancellation_charge=120.0,
-        refund_amount=845.0,
-        reason="Travel plan changed",
-        status="APPROVED"
-    )
-    db.add(demo_refund)
+        # Pre-add Refund for cancelled booking
+        demo_refund = Refund(
+            refund_ref="RF-849102",
+            booking_id=cancelled_booking.id,
+            user_id=demo_user.id,
+            original_amount=965.0,
+            cancellation_charge=120.0,
+            refund_amount=845.0,
+            reason="Travel plan changed",
+            status="APPROVED"
+        )
+        db.add(demo_refund)
 
     print("Seeding 20+ Sample PNR Records...")
+    existing_pnrs = {p.pnr_number for p in db.query(PNRRecord.pnr_number).all()}
     pnr_samples = [
         ("8421098451", "12951", "Mumbai Rajdhani Express", (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d"), "Mumbai Central (MMCT)", "New Delhi (NDLS)", "Mumbai Central", "3A", "General", "CHART NOT PREPARED", [
             {"passenger": "Passenger 1", "booking_status": "CNF", "current_status": "CNF B2-45 (Lower)"},
@@ -617,6 +634,8 @@ def seed():
     ]
 
     for pnr_num, t_num, t_nm, j_dt, src_str, dst_str, b_pt, t_cls, qta, ch_st, p_list in pnr_samples:
+        if pnr_num in existing_pnrs:
+            continue
         pnr_rec = PNRRecord(
             pnr_number=pnr_num,
             train_number=t_num,
@@ -632,51 +651,52 @@ def seed():
         )
         db.add(pnr_rec)
 
-    print("Seeding Unreserved & Platform Tickets...")
-    u1 = UnreservedTicket(
-        ticket_ref="UTS-894210",
-        user_id=demo_user.id,
-        ticket_type="JOURNEY",
-        from_station="Mumbai CSMT (CSMT)",
-        to_station="Thane (TNA)",
-        passenger_count=2,
-        travel_class="II",
-        fare=40.0,
-        validity_start=datetime.utcnow() - timedelta(minutes=15),
-        validity_end=datetime.utcnow() + timedelta(hours=3),
-        qr_payload="UTS:JOURNEY:CSMT-TNA:PAX2:II:VALID3HRS",
-        status="ACTIVE"
-    )
-    u2 = UnreservedTicket(
-        ticket_ref="PLT-459201",
-        user_id=demo_user.id,
-        ticket_type="PLATFORM",
-        from_station="Mumbai Central (MMCT)",
-        to_station=None,
-        passenger_count=1,
-        travel_class="II",
-        fare=10.0,
-        validity_start=datetime.utcnow() - timedelta(minutes=40),
-        validity_end=datetime.utcnow() + timedelta(hours=1, minutes=20),
-        qr_payload="UTS:PLATFORM:MMCT:PAX1:VALID2HRS",
-        status="ACTIVE"
-    )
-    u3 = UnreservedTicket(
-        ticket_ref="SEA-901842",
-        user_id=demo_user.id,
-        ticket_type="SEASON",
-        from_station="Thane (TNA)",
-        to_station="Mumbai CSMT (CSMT)",
-        passenger_count=1,
-        travel_class="II",
-        duration_type="MONTHLY",
-        fare=315.0,
-        validity_start=datetime.utcnow() - timedelta(days=5),
-        validity_end=datetime.utcnow() + timedelta(days=25),
-        qr_payload="UTS:SEASON:MONTHLY:TNA-CSMT:PAX1:II",
-        status="ACTIVE"
-    )
-    db.add_all([u1, u2, u3])
+    if db.query(UnreservedTicket).count() == 0:
+        print("Seeding Unreserved & Platform Tickets...")
+        u1 = UnreservedTicket(
+            ticket_ref="UTS-894210",
+            user_id=demo_user.id,
+            ticket_type="JOURNEY",
+            from_station="Mumbai CSMT (CSMT)",
+            to_station="Thane (TNA)",
+            passenger_count=2,
+            travel_class="II",
+            fare=40.0,
+            validity_start=datetime.utcnow() - timedelta(minutes=15),
+            validity_end=datetime.utcnow() + timedelta(hours=3),
+            qr_payload="UTS:JOURNEY:CSMT-TNA:PAX2:II:VALID3HRS",
+            status="ACTIVE"
+        )
+        u2 = UnreservedTicket(
+            ticket_ref="PLT-459201",
+            user_id=demo_user.id,
+            ticket_type="PLATFORM",
+            from_station="Mumbai Central (MMCT)",
+            to_station=None,
+            passenger_count=1,
+            travel_class="II",
+            fare=10.0,
+            validity_start=datetime.utcnow() - timedelta(minutes=40),
+            validity_end=datetime.utcnow() + timedelta(hours=1, minutes=20),
+            qr_payload="UTS:PLATFORM:MMCT:PAX1:VALID2HRS",
+            status="ACTIVE"
+        )
+        u3 = UnreservedTicket(
+            ticket_ref="SEA-901842",
+            user_id=demo_user.id,
+            ticket_type="SEASON",
+            from_station="Thane (TNA)",
+            to_station="Mumbai CSMT (CSMT)",
+            passenger_count=1,
+            travel_class="II",
+            duration_type="MONTHLY",
+            fare=315.0,
+            validity_start=datetime.utcnow() - timedelta(days=5),
+            validity_end=datetime.utcnow() + timedelta(days=25),
+            qr_payload="UTS:SEASON:MONTHLY:TNA-CSMT:PAX1:II",
+            status="ACTIVE"
+        )
+        db.add_all([u1, u2, u3])
 
     print("Seeding Food Vendors and Menus...")
     vendors_spec = [
@@ -714,8 +734,11 @@ def seed():
         ])
     ]
 
+    existing_vendors = {v.vendor_name for v in db.query(FoodVendor).all()}
     for v_name, st_code, cuis, rat, items in vendors_spec:
-        st_obj = stations.get(st_code, stations["MMCT"])
+        if v_name in existing_vendors:
+            continue
+        st_obj = stations.get(st_code, stations.get("MMCT"))
         vendor = FoodVendor(
             station_id=st_obj.id,
             vendor_name=v_name,
@@ -738,64 +761,83 @@ def seed():
             )
             db.add(fitem)
 
-    print("Seeding Demo Rail Support Complaints...")
-    c1 = Complaint(
-        complaint_ref="CMP-849201",
-        user_id=demo_user.id,
-        pnr="8421098451",
-        train_number="12951",
-        station_code="MMCT",
-        category="Cleanliness",
-        description="Washroom in coach B2 requires deep cleaning and soap dispenser is empty.",
-        status="IN_REVIEW",
-        resolution_notes="Cleaning staff at next stop (Surat) dispatched to inspect."
-    )
-    c2 = Complaint(
-        complaint_ref="CMP-392018",
-        user_id=demo_user.id,
-        pnr="4521098420",
-        train_number="12123",
-        station_code="PUNE",
-        category="Catering",
-        description="Tea was served lukewarm by the pantry attendant.",
-        status="RESOLVED",
-        resolution_notes="Vendor notified and apologized. Warning issued to on-duty caterer."
-    )
-    db.add_all([c1, c2])
-
-    print("Seeding 15 Notifications (matching badge count 15)...")
-    notifications_data = [
-        ("Booking Confirmed: Mumbai Rajdhani (12951)", "Your ticket for Mumbai Central to New Delhi on Oct 15 is confirmed in Coach B2, Berth 45.", "booking", False),
-        ("Train Delay Alert: 12951 running 10 mins late", "Mumbai Rajdhani Express is currently delayed by 10 minutes near Surat junction.", "delay", False),
-        ("Platform Allocation Update", "12123 Deccan Queen will depart from Platform 8 at Mumbai CSMT.", "general", False),
-        ("R-Wallet Refund Credited (₹845.00)", "Your refund for Booking BK-304918 has been approved and processed to your R-Wallet.", "refund", False),
-        ("Food Delivery Confirmed", "Your food order from Haldiram's Express will be delivered at Surat Station, Coach B2, Seat 45.", "food", False),
-        ("Rail Support Update: CMP-849201", "Your cleanliness complaint has been assigned to the housekeeping crew at Surat.", "support", False),
-        ("Tatkal Booking Window Opening", "Tatkal quota for your saved route Mumbai to Delhi opens tomorrow at 10:00 AM.", "general", False),
-        ("Journey Reminder", "Your upcoming journey on Train 12951 departs in 5 days from Mumbai Central.", "booking", False),
-        ("Chart Preparation Notification", "Final passenger reservation charts for Train 12123 Deccan Queen have been prepared.", "general", False),
-        ("Special Festive Trains Announced", "50 new festival special trains between Mumbai, Delhi, and Patna added for Diwali rush.", "general", False),
-        ("R-Wallet Cashback Earned!", "₹50 promotional cashback added to your R-Wallet balance.", "refund", False),
-        ("Coach Position Announced", "Your coach B2 on Train 12951 will be positioned at Platform Zone B.", "general", False),
-        ("Safety Advisory: Fog Season Protocol", "Northern Railway has implemented automated fog safety devices on all Rajdhani express rakes.", "general", False),
-        ("Complaint Resolved: CMP-392018", "Your complaint regarding catering service on Deccan Queen has been successfully resolved.", "support", False),
-        ("Welcome to RailOne!", "Explore seamless ticket booking, live train tracking, PNR status, and onboard e-catering.", "general", True),
-    ]
-
-    for title, msg, cat, is_read in notifications_data:
-        notif = Notification(
+    if db.query(Complaint).count() == 0:
+        print("Seeding Demo Rail Support Complaints...")
+        c1 = Complaint(
+            complaint_ref="CMP-849201",
             user_id=demo_user.id,
-            title=title,
-            message=msg,
-            category=cat,
-            is_read=is_read,
-            created_at=datetime.utcnow() - timedelta(hours=random.randint(1, 48))
+            pnr="8421098451",
+            train_number="12951",
+            station_code="MMCT",
+            category="Cleanliness",
+            description="Washroom in coach B2 requires deep cleaning and soap dispenser is empty.",
+            status="IN_REVIEW",
+            resolution_notes="Cleaning staff at next stop (Surat) dispatched to inspect."
         )
-        db.add(notif)
+        c2 = Complaint(
+            complaint_ref="CMP-392018",
+            user_id=demo_user.id,
+            pnr="4521098420",
+            train_number="12123",
+            station_code="PUNE",
+            category="Catering",
+            description="Tea was served lukewarm by the pantry attendant.",
+            status="RESOLVED",
+            resolution_notes="Vendor notified and apologized. Warning issued to on-duty caterer."
+        )
+        db.add_all([c1, c2])
+
+    if db.query(Notification).count() == 0:
+        print("Seeding 15 Notifications (matching badge count 15)...")
+        notifications_data = [
+            ("Booking Confirmed: Mumbai Rajdhani (12951)", "Your ticket for Mumbai Central to New Delhi on Oct 15 is confirmed in Coach B2, Berth 45.", "booking", False),
+            ("Train Delay Alert: 12951 running 10 mins late", "Mumbai Rajdhani Express is currently delayed by 10 minutes near Surat junction.", "delay", False),
+            ("Platform Allocation Update", "12123 Deccan Queen will depart from Platform 8 at Mumbai CSMT.", "general", False),
+            ("R-Wallet Refund Credited (₹845.00)", "Your refund for Booking BK-304918 has been approved and processed to your R-Wallet.", "refund", False),
+            ("Food Delivery Confirmed", "Your food order from Haldiram's Express will be delivered at Surat Station, Coach B2, Seat 45.", "food", False),
+            ("Rail Support Update: CMP-849201", "Your cleanliness complaint has been assigned to the housekeeping crew at Surat.", "support", False),
+            ("Tatkal Booking Window Opening", "Tatkal quota for your saved route Mumbai to Delhi opens tomorrow at 10:00 AM.", "general", False),
+            ("Journey Reminder", "Your upcoming journey on Train 12951 departs in 5 days from Mumbai Central.", "booking", False),
+            ("Chart Preparation Notification", "Final passenger reservation charts for Train 12123 Deccan Queen have been prepared.", "general", False),
+            ("Special Festive Trains Announced", "50 new festival special trains between Mumbai, Delhi, and Patna added for Diwali rush.", "general", False),
+            ("R-Wallet Cashback Earned!", "₹50 promotional cashback added to your R-Wallet balance.", "refund", False),
+            ("Coach Position Announced", "Your coach B2 on Train 12951 will be positioned at Platform Zone B.", "general", False),
+            ("Safety Advisory: Fog Season Protocol", "Northern Railway has implemented automated fog safety devices on all Rajdhani express rakes.", "general", False),
+            ("Complaint Resolved: CMP-392018", "Your complaint regarding catering service on Deccan Queen has been successfully resolved.", "support", False),
+            ("Welcome to RailOne!", "Explore seamless ticket booking, live train tracking, PNR status, and onboard e-catering.", "general", True),
+        ]
+
+        for title, msg, cat, is_read in notifications_data:
+            notif = Notification(
+                user_id=demo_user.id,
+                title=title,
+                message=msg,
+                category=cat,
+                is_read=is_read,
+                created_at=datetime.utcnow() - timedelta(hours=random.randint(1, 48))
+            )
+            db.add(notif)
 
     db.commit()
     db.close()
     print("Seeding completed successfully!")
+
+def seed_if_empty():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        st_count = db.query(Station).count()
+        tr_count = db.query(Train).count()
+        if st_count < 256 or tr_count < 50:
+            print(f"Safe auto-seed: station count={st_count}, train count={tr_count}. Running idempotent seed...")
+            seed(reset=(st_count == 0))
+            print("Safe auto-seed complete.")
+        else:
+            print(f"Database verified: {st_count} stations, {tr_count} trains ready.")
+    except Exception as e:
+        print(f"Safe seed check notice: {e}")
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     seed()
